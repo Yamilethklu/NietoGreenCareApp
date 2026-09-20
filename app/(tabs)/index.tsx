@@ -1,0 +1,22 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { FontAwesome6 } from '@expo/vector-icons';
+import { Card, Loading, Muted, Screen, Title } from '@/src/components/ui';
+import { colors } from '@/src/lib/theme';
+import { clientName, serviceList } from '@/src/lib/format';
+import { getLeads } from '@/src/lib/services';
+import { isSupabaseConfigured } from '@/src/lib/supabase';
+import type { Lead, LeadStatus } from '@/src/types/models';
+
+const filters: Array<{ key: LeadStatus | 'all'; label: string }> = [{ key: 'all', label: 'Todos' }, { key: 'pending', label: 'Pendientes' }, { key: 'scheduled', label: 'Programados' }, { key: 'completed', label: 'Completados' }, { key: 'cancelled', label: 'Cancelados' }];
+const statusLabel: Record<string, string> = { pending: 'Pendiente', scheduled: 'Programado', completed: 'Completado', cancelled: 'Cancelado' };
+export default function LeadsScreen() {
+  const [leads, setLeads] = useState<Lead[]>([]); const [filter, setFilter] = useState<LeadStatus | 'all'>('all'); const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false);
+  const load = useCallback(async () => { try { setLeads(await getLeads()); } catch (error) { Alert.alert('No se pudieron cargar las solicitudes', error instanceof Error ? error.message : 'Error desconocido'); } finally { setLoading(false); setRefreshing(false); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  const data = useMemo(() => filter === 'all' ? leads : leads.filter((lead) => lead.status === filter), [filter, leads]);
+  if (loading) return <Loading />;
+  return <Screen><View style={s.hero}><Text style={s.brand}>NIETO GREEN CARE</Text><Title>Solicitudes de trabajo</Title><Muted>{isSupabaseConfigured ? `${leads.length} solicitudes sincronizadas` : 'Modo de configuración: agrega las claves de Supabase.'}</Muted></View><View style={s.filters}>{filters.map((item) => <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[s.chip, filter === item.key && s.chipActive]}><Text style={[s.chipText, filter === item.key && s.chipTextActive]}>{item.label}</Text></Pressable>)}</View><FlatList data={data} keyExtractor={(item) => item.id} contentContainerStyle={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.gold} />} ListEmptyComponent={<Card><Title>No hay solicitudes</Title><Muted>Las nuevas solicitudes aparecerán aquí automáticamente.</Muted></Card>} renderItem={({ item }) => <Pressable onPress={() => router.push({ pathname: '/lead/[id]', params: { id: item.id, data: JSON.stringify(item) } })}><Card style={s.lead}><View style={s.leadTop}><View><Title>{clientName(item)}</Title><Muted numberOfLines={1}>{item.address ?? 'Dirección por confirmar'}</Muted></View><View style={s.badge}><Text style={s.badgeText}>{statusLabel[item.status ?? 'pending'] ?? item.status}</Text></View></View><View style={s.meta}><FontAwesome6 name="leaf" size={12} color={colors.gold} /><Text style={s.metaText}>{serviceList(item).join(' • ') || 'Servicio por definir'}</Text></View></Card></Pressable>} /></Screen>;
+}
+const s = StyleSheet.create({ hero: { paddingHorizontal: 18, paddingTop: 18, gap: 5 }, brand: { color: colors.gold, fontSize: 11, fontWeight: '900', letterSpacing: 2 }, filters: { flexDirection: 'row', flexWrap: 'wrap', padding: 14, gap: 8 }, chip: { borderRadius: 99, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: colors.elevated }, chipActive: { backgroundColor: colors.forestLight }, chipText: { color: colors.muted, fontSize: 12, fontWeight: '700' }, chipTextActive: { color: colors.text }, list: { paddingHorizontal: 14, paddingBottom: 28, gap: 10 }, lead: { gap: 12 }, leadTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, badge: { backgroundColor: colors.forest, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, alignSelf: 'flex-start' }, badgeText: { color: colors.text, fontSize: 10, fontWeight: '800' }, meta: { flexDirection: 'row', gap: 7, alignItems: 'center' }, metaText: { color: colors.muted, flex: 1, fontSize: 12 } });

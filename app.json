@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Nieto Green Care",
+    "slug": "nieto-green-care",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "nietogreencare",
+    "plugins": [
+      "expo-router",
+      ["expo-image-picker", { "photosPermission": "Permite seleccionar fotos de trabajos para la galería.", "cameraPermission": "Permite tomar fotos de trabajos terminados." }],
+      ["expo-notifications", { "color": "#1B4332" }]
+    ],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.nietogreencare.app" },
+    "android": { "package": "com.nietogreencare.app", "edgeToEdgeEnabled": true },
+    "web": { "bundler": "metro" }
+  }
+}
