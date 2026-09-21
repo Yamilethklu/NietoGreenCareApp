@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(212 212)">
+    <circle cx="300" cy="300" r="294" fill="#FFFFFF" stroke="#1B4332" stroke-width="12"/>
+    <circle cx="300" cy="300" r="226" fill="none" stroke="#1B4332" stroke-width="5"/>
+
+    <defs>
+      <path id="top-arc" d="M 104 302 A 196 196 0 0 1 496 302"/>
+      <path id="bottom-arc" d="M 496 313 A 196 196 0 0 1 104 313"/>
+    </defs>
+
+    <text fill="#1B4332" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="700" letter-spacing="2.8">
+      <textPath href="#top-arc" startOffset="50%" text-anchor="middle">NIETO GREEN CARE LLC</textPath>
+    </text>
+    <text fill="#1B4332" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" letter-spacing="1.15">
+      <textPath href="#bottom-arc" startOffset="50%" text-anchor="middle">LAWN CARE | LANDSCAPING | MAINTENANCE</textPath>
+    </text>
+
+    <path d="M210 404V201h58l62 107V201h55v203h-58l-62-107v107z" fill="#1B4332"/>
+    <path d="M298 225c15-62 76-86 122-75-10 48-47 94-105 96 8-9 19-18 33-27-17 5-33 7-50 6z" fill="#52B788"/>
+    <path d="M296 226c24-23 53-43 91-59" fill="none" stroke="#1B4332" stroke-width="7" stroke-linecap="round"/>
+    <path d="M221 424h158" fill="none" stroke="#52B788" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="201" cy="424" r="7" fill="#52B788"/>
+    <circle cx="399" cy="424" r="7" fill="#52B788"/>
+  </g>
+</svg>

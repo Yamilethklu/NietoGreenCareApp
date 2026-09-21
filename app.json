@@ -6,13 +6,51 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "nietogreencare",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0F0F0F"
+    },
     "plugins": [
       "expo-router",
-      ["expo-image-picker", { "photosPermission": "Permite seleccionar fotos de trabajos para la galería.", "cameraPermission": "Permite tomar fotos de trabajos terminados." }],
-      ["expo-notifications", { "color": "#1B4332" }]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite seleccionar fotos de trabajos para la galería.",
+          "cameraPermission": "Permite tomar fotos de trabajos terminados."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1B4332"
+        }
+      ]
     ],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.nietogreencare.app" },
-    "android": { "package": "com.nietogreencare.app", "edgeToEdgeEnabled": true },
-    "web": { "bundler": "metro" }
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nietogreencare.app"
+    },
+    "android": {
+      "package": "com.nietogreencare.app",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0F0F"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ee66ff82-78c1-4a92-801d-28ed5ec36feb"
+      }
+    }
   }
 }
