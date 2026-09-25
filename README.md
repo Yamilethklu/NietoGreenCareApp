@@ -8,7 +8,7 @@ El botón **Panel admin** abre `https://nietogreecare-site.vercel.app/admin` en 
 
 ## Android
 
-- [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.0/NietoGreenCare-Android.apk)
+- [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.0/app-release.apk)
 - Instalar el APK en el teléfono y permitir la instalación desde el navegador si Android lo solicita.
 - Es necesaria una conexión a internet para consultar y guardar las solicitudes.
 
