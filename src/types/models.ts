@@ -1,4 +1,0 @@
-export type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled' | string;
-export interface Lead { id: string; created_at?: string; name?: string; client_name?: string; phone?: string; email?: string; address?: string; status?: LeadStatus; final_price?: number | string | null; services?: string[] | string | null; yards?: number | string | null; [key: string]: unknown; }
-export interface CalendarEvent { id: string; title?: string; start_time?: string; end_time?: string; scheduled_at?: string; date?: string; status?: string; lead_id?: string; leads?: Lead | null; [key: string]: unknown; }
-export interface GalleryItem { id: string; created_at?: string; image_url?: string; url?: string; path?: string; public?: boolean; is_public?: boolean; caption?: string; [key: string]: unknown; }

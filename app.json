@@ -2,14 +2,14 @@
   "expo": {
     "name": "Nieto Green Care",
     "slug": "nieto-green-care",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "scheme": "nietogreencare",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash-icon.png",
-      "backgroundColor": "#0F0F0F"
+      "backgroundColor": "#dcfce7"
     },
     "plugins": [
       "expo-router",
@@ -36,7 +36,7 @@
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F0F0F"
+        "backgroundColor": "#dcfce7"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",

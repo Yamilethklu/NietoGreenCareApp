@@ -1,0 +1,47 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build installable APK
+        run: ./gradlew :app:assembleRelease --no-daemon
+        working-directory: android
+        env:
+          CI: '1'
+      - name: Publish workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NietoGreenCare-Android
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+      - name: Publish direct download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view app-v1.1.0 >/dev/null 2>&1; then
+            gh release upload app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --clobber
+          else
+            gh release create app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --title "Nieto Green Care Android 1.1.0" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
+          fi
