@@ -29,7 +29,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - name: Build installable APK
-        run: ./gradlew :app:assembleRelease --no-daemon
+        run: bash ./gradlew :app:assembleRelease --no-daemon
         working-directory: android
         env:
           CI: '1'
