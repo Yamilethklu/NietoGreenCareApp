@@ -1,10 +1,28 @@
 # Nieto Green Care App
 
-Aplicación Android e iOS de Nieto Green Care LLC. Muestra el sitio oficial `https://nietogreecare-site.vercel.app` en una vista móvil. El cotizador, la galería, las solicitudes y los métodos de contacto funcionan desde el sitio y usan su misma base de datos; la aplicación no guarda una copia separada de los datos del cliente.
+Aplicación Android e iOS de Nieto Green Care LLC para controlar la operación diaria del negocio desde el teléfono. Incluye agenda por día, casas/clientes, registro de pagos, invoices y trabajadores. También mantiene un enlace directo al sitio oficial `https://nietogreecare-site.vercel.app`.
 
-## Administración
+## Funciones principales
 
-El botón **Panel admin** abre `https://nietogreecare-site.vercel.app/admin` en el navegador del dispositivo. La autenticación Google y la lista de los dos administradores se validan en el servidor del sitio. La aplicación no contiene claves privadas ni contraseñas.
+- La primera pantalla muestra las casas agendadas del día.
+- Las órdenes usan estatus `SOLICITADO`, `FINALIZADA` o `CANCELADA`.
+- Al finalizar una orden, la tarjeta cambia a verde; al cancelarla, cambia a gris.
+- El pago permite registrar fecha, método (`Cash`, `CashApp`, `Venmo`, `Zelle`) y nota opcional.
+- Las órdenes pagadas bloquean las acciones de historial/pago y se marcan como `PAGADO`.
+- El apartado de casas permite agregar, editar, eliminar y generar invoices.
+- El apartado de invoices tiene filtro de pagado/no pagado y muestra los 50 más recientes.
+- El apartado de trabajadores permite registrar correos y ver trabajos asignados por día.
+
+## Vinculación con el sitio
+
+La app está preparada para usar la misma base de datos del sitio por Supabase. Configura estas variables antes de compilar:
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+Si las variables no están configuradas, la app abre en modo demo con datos de ejemplo para revisar el flujo visual.
 
 ## Android
 
@@ -22,4 +40,4 @@ npm run typecheck
 npx expo start
 ```
 
-No se requieren variables de entorno en la aplicación. Las variables privadas permanecen en el sitio desplegado.
+Las claves privadas permanecen en el sitio desplegado. La app solo debe usar la clave pública/anon de Supabase.
