@@ -4,6 +4,9 @@ Aplicación Android e iOS de Nieto Green Care LLC para controlar la operación d
 
 ## Funciones principales
 
+- Dashboard con ingresos, trabajos realizados, solicitudes pendientes y area medida.
+- Solicitudes del cotizador con estado, precio final, fecha y acceso a Google Calendar.
+- Clientes con historial resumido por telefono.
 - La primera pantalla muestra las casas agendadas del día.
 - Las órdenes usan estatus `SOLICITADO`, `FINALIZADA` o `CANCELADA`.
 - Al finalizar una orden, la tarjeta cambia a verde; al cancelarla, cambia a gris.
@@ -12,6 +15,10 @@ Aplicación Android e iOS de Nieto Green Care LLC para controlar la operación d
 - El apartado de casas permite agregar, editar, eliminar y generar invoices.
 - El apartado de invoices tiene filtro de pagado/no pagado y muestra los 50 más recientes.
 - El apartado de trabajadores permite registrar correos y ver trabajos asignados por día.
+- Precios editables por frecuencia y rango de pies cuadrados.
+- Galeria y opiniones con publicar/ocultar/eliminar.
+- QR del cotizador publico.
+- Editor del sitio para textos, marca, cobertura y contenido publico.
 
 ## Vinculación con el sitio
 
@@ -23,6 +30,19 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
 Si las variables no están configuradas, la app abre en modo demo con datos de ejemplo para revisar el flujo visual.
+
+Tablas que la app intenta leer cuando Supabase esta configurado:
+
+```text
+leads
+pricing_rules
+gallery_items
+customer_reviews
+crew_members
+work_orders
+work_invoices
+site_sections
+```
 
 ## Android
 
