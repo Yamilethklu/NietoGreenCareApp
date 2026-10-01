@@ -1,792 +1,346 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Linking,
-  Modal,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const SITE_URL = 'https://nietogreecare-site.vercel.app';
+const APP_LOGO = require('../assets/icon.png');
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
-type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
-type LeadStatus = 'pendiente' | 'programado' | 'completado' | 'cancelado';
-type PaymentMethod = 'Cash' | 'CashApp' | 'Venmo' | 'Zelle';
-type Frequency = 'Cada 8 dias' | 'Cada 15 dias' | 'Una vez';
-type Tab = 'dashboard' | 'solicitudes' | 'clientes' | 'agenda' | 'casas' | 'invoices' | 'trabajadores' | 'precios' | 'galeria' | 'opiniones' | 'qr' | 'editor';
-
-type House = {
-  id: string;
-  client: string;
-  address: string;
-  phone: string;
-  email: string;
-  frequency: Frequency;
-  service: string;
-  price: number;
-  active: boolean;
-  notes: string;
-};
-
-type WorkOrder = {
-  id: string;
-  houseId: string;
-  date: string;
-  service: string;
-  price: number;
-  status: Status;
-  paid: boolean;
-  workerId?: string;
-  notes?: string;
-  invoiceId?: string;
-  payment?: { date: string; method: PaymentMethod; note?: string };
-};
-
-type Invoice = {
-  id: string;
-  houseId: string;
-  createdAt: string;
-  orderIds: string[];
-  total: number;
-  paid: boolean;
-  payment?: { date: string; method: PaymentMethod; note?: string };
-};
-
-type Worker = {
-  id: string;
-  name: string;
-  email: string;
-  passwordStatus: 'Pendiente de crear' | 'Activa';
-  active?: boolean;
-};
-
-type Lead = {
-  id: string;
-  customer: string;
-  phone: string;
-  email: string;
-  address: string;
-  reference: string;
-  services: string;
-  areaSqFt: number;
-  details: string;
-  gateCode?: string;
-  status: LeadStatus;
-  finalPrice: number;
-  scheduledAt: string;
-};
-
-type CustomerSummary = {
-  id: string;
-  name: string;
-  phone: string;
-  requests: number;
-  completed: number;
-  paidTotal: number;
-};
-
-type PricingRule = {
-  id: string;
-  frequency: 'Semanal' | 'Quincenal';
-  minArea: number;
-  maxArea: number;
-  price: number;
-};
-
-type GalleryItem = {
-  id: string;
-  title: string;
-  type: 'foto' | 'video';
-  visible: boolean;
-};
-
-type Review = {
-  id: string;
-  customer: string;
-  rating: number;
-  text: string;
-  visible: boolean;
-};
-
-type SiteSection = {
-  id: string;
-  section: string;
-  title: string;
-  body: string;
-  visible: boolean;
-};
-
 const today = new Date().toISOString().slice(0, 10);
 
+type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
+type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled';
+type PayMethod = 'Cash' | 'CashApp' | 'Venmo' | 'Zelle';
+type Tab = 'dashboard' | 'solicitudes' | 'clientes' | 'agenda' | 'casas' | 'invoices' | 'trabajadores' | 'precios' | 'galeria' | 'opiniones' | 'qr' | 'editor';
+type House = { id: string; planId?: string; client: string; address: string; city?: string; zipCode?: string; phone: string; email: string; frequency: string; service: string; price: number; active: boolean; notes: string };
+type Order = { id: string; houseId: string; date: string; service: string; price: number; status: Status; paid: boolean; paidAmount: number; workerId?: string; notes?: string; invoiceId?: string };
+type Invoice = { id: string; houseId: string; createdAt: string; orderIds: string[]; number?: string; total: number; paid: boolean; sentAt?: string | null };
+type Worker = { id: string; name: string; email: string; active: boolean };
+type Lead = { id: string; customer: string; phone: string; email: string; address: string; reference: string; services: string; areaSqFt: number; details: string; gateCode?: string; status: LeadStatus; finalPrice: number };
+type Price = { id: string; name: string; minArea: number; maxArea: number; price: number };
+type Gallery = { id: string; title: string; type: 'foto' | 'video'; visible: boolean };
+type Review = { id: string; customer: string; rating: number; text: string; visible: boolean };
+type Section = { id: string; section: string; title: string; body: string; visible: boolean };
+type Role = 'admin' | 'worker' | null;
+type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
+
 const demoHouses: House[] = [
-  {
-    id: 'h1',
-    client: 'Maria Lopez',
-    address: '1208 Blue Ridge Dr, Georgetown, TX',
-    phone: '512-555-0121',
-    email: 'maria@example.com',
-    frequency: 'Cada 15 dias',
-    service: 'Yarda completa',
-    price: 65,
-    active: true,
-    notes: 'Tiene mascotas. Avisar antes de entrar.',
-  },
-  {
-    id: 'h2',
-    client: 'Carlos Rivera',
-    address: '741 Oak Meadow Ln, Leander, TX',
-    phone: '512-555-0178',
-    email: 'carlos@example.com',
-    frequency: 'Cada 8 dias',
-    service: 'Frente y atras',
-    price: 55,
-    active: true,
-    notes: 'Porton con codigo.',
-  },
+  { id: 'h1', client: 'Maria Lopez', address: '1208 Blue Ridge Dr, Georgetown, TX', phone: '512-555-0121', email: 'maria@example.com', frequency: 'Cada 15 dias', service: 'Yarda completa', price: 65, active: true, notes: 'Tiene mascotas. Avisar antes de entrar.' },
+  { id: 'h2', client: 'Carlos Rivera', address: '741 Oak Meadow Ln, Leander, TX', phone: '512-555-0178', email: 'carlos@example.com', frequency: 'Cada 8 dias', service: 'Frente y atras', price: 55, active: true, notes: 'Porton con codigo.' },
 ];
-
-const demoOrders: WorkOrder[] = [
-  { id: 'o1', houseId: 'h1', date: today, service: 'Corte de yarda', price: 65, status: 'SOLICITADO', paid: false, workerId: 'w1', notes: 'Revisar orillas.' },
-  { id: 'o2', houseId: 'h2', date: today, service: 'Corte semanal', price: 55, status: 'SOLICITADO', paid: false, workerId: 'w2' },
-  { id: 'o3', houseId: 'h1', date: '2026-09-22', service: 'Corte de yarda', price: 65, status: 'FINALIZADA', paid: false, workerId: 'w1' },
-  { id: 'o4', houseId: 'h1', date: '2026-09-08', service: 'Corte de yarda', price: 65, status: 'FINALIZADA', paid: true, workerId: 'w1', invoiceId: 'i1', payment: { date: '2026-09-10', method: 'Zelle' } },
+const demoOrders: Order[] = [
+  { id: 'o1', houseId: 'h1', date: today, service: 'Corte de yarda', price: 65, status: 'SOLICITADO', paid: false, paidAmount: 0, workerId: 'w1' },
+  { id: 'o2', houseId: 'h2', date: today, service: 'Corte semanal', price: 55, status: 'SOLICITADO', paid: false, paidAmount: 0, workerId: 'w2' },
 ];
-
-const demoWorkers: Worker[] = [
-  { id: 'w1', name: 'Luis Nieto', email: 'luis@nietogreencare.com', passwordStatus: 'Activa', active: true },
-  { id: 'w2', name: 'Trabajador Demo', email: 'worker@nietogreencare.com', passwordStatus: 'Pendiente de crear', active: true },
-];
-
+const demoWorkers: Worker[] = [{ id: 'w1', name: 'Luis Nieto', email: 'luis@nietogreencare.com', active: true }, { id: 'w2', name: 'Trabajador Demo', email: 'worker@nietogreencare.com', active: true }];
 const demoLeads: Lead[] = [
-  { id: 'l1', customer: 'Ana Martinez', phone: '512-555-0199', email: 'ana@example.com', address: '212 Cedar Park Dr, Cedar Park, TX', reference: 'NGC-1024', services: 'Corte de cesped', areaSqFt: 4820, details: 'Frente y atras, quincenal', gateCode: '4421', status: 'pendiente', finalPrice: 65, scheduledAt: today },
-  { id: 'l2', customer: 'Jose Perez', phone: '512-555-0180', email: 'jose@example.com', address: '88 Round Rock Ave, Round Rock, TX', reference: 'NGC-1025', services: 'Corte de cesped', areaSqFt: 3900, details: 'Solo frente, semanal', status: 'programado', finalPrice: 45, scheduledAt: today },
+  { id: 'l1', customer: 'Ana Martinez', phone: '512-555-0199', email: 'ana@example.com', address: '212 Cedar Park Dr, Cedar Park, TX', reference: 'NGC-1024', services: 'Corte de cesped', areaSqFt: 4820, details: 'Frente y atras, quincenal', gateCode: '4421', status: 'pending', finalPrice: 65 },
 ];
-
-const demoPricing: PricingRule[] = [
-  { id: 'p1', frequency: 'Semanal', minArea: 0, maxArea: 4800, price: 30 },
-  { id: 'p2', frequency: 'Quincenal', minArea: 3800, maxArea: 4800, price: 40 },
-  { id: 'p3', frequency: 'Quincenal', minArea: 5000, maxArea: 6000, price: 60 },
-];
-
-const demoGallery: GalleryItem[] = [
-  { id: 'g1', title: 'Antes y despues - Georgetown', type: 'foto', visible: true },
-  { id: 'g2', title: 'Video corte semanal', type: 'video', visible: false },
-];
-
-const demoReviews: Review[] = [
-  { id: 'r1', customer: 'Maria Lopez', rating: 5, text: 'Muy buen trabajo y puntualidad.', visible: true },
-  { id: 'r2', customer: 'Carlos Rivera', rating: 5, text: 'Excelente servicio de yarda.', visible: true },
-];
-
-const demoSections: SiteSection[] = [
-  { id: 's1', section: 'Marca', title: 'Nieto Green Care', body: 'Lawn care profesional en Central Texas.', visible: true },
-  { id: 's2', section: 'Inicio', title: 'Cotiza tu corte de cesped', body: 'Mide tu yarda y agenda una visita desde el sitio.', visible: true },
-  { id: 's3', section: 'Zonas', title: 'Cobertura semanal', body: 'Liberty Hill, Georgetown, Leander, Cedar Park, Hutto y Round Rock.', visible: true },
-];
+const demoPrices: Price[] = [{ id: 'p1', name: 'Semanal chico', minArea: 0, maxArea: 4800, price: 30 }, { id: 'p2', name: 'Quincenal medio', minArea: 3800, maxArea: 4800, price: 40 }];
+const demoGallery: Gallery[] = [{ id: 'g1', title: 'Antes y despues - Georgetown', type: 'foto', visible: true }];
+const demoReviews: Review[] = [{ id: 'r1', customer: 'Maria Lopez', rating: 5, text: 'Muy buen trabajo y puntualidad.', visible: true }];
+const demoSections: Section[] = [{ id: 's1', section: 'Marca', title: 'Nieto Green Care', body: 'Lawn care profesional en Central Texas.', visible: true }];
 
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [selectedDate, setSelectedDate] = useState(today);
-  const [syncMessage, setSyncMessage] = useState(supabase ? 'Conectando con Supabase...' : 'Modo demo listo para conectar al sitio');
+  const [session, setSession] = useState<Session | null>(null);
+  const [role, setRole] = useState<Role>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [message, setMessage] = useState(supabase ? 'Inicia sesion para vincular con el panel web' : 'Faltan variables de Supabase');
   const [leads, setLeads] = useState(demoLeads);
   const [houses, setHouses] = useState(demoHouses);
   const [orders, setOrders] = useState(demoOrders);
   const [workers, setWorkers] = useState(demoWorkers);
-  const [pricing, setPricing] = useState(demoPricing);
+  const [prices, setPrices] = useState(demoPrices);
   const [gallery, setGallery] = useState(demoGallery);
   const [reviews, setReviews] = useState(demoReviews);
   const [sections, setSections] = useState(demoSections);
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    { id: 'i1', houseId: 'h1', createdAt: '2026-09-10', orderIds: ['o4'], total: 65, paid: true, payment: { date: '2026-09-10', method: 'Zelle' } },
-  ]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
 
   useEffect(() => {
-    void loadSupabaseData();
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (nextSession) void loadData();
+    });
+    return () => data.subscription.unsubscribe();
   }, []);
+  useEffect(() => { if (session) void loadData(); }, [session]);
 
-  const visibleOrders = useMemo(
-    () => orders.filter((order) => order.date === selectedDate).sort((a, b) => a.id.localeCompare(b.id)),
-    [orders, selectedDate],
-  );
-
-  const customers = useMemo<CustomerSummary[]>(() => {
-    const byPhone = new Map<string, CustomerSummary>();
+  const visibleOrders = useMemo(() => orders.filter((order) => order.date === selectedDate && (role !== 'worker' || workerMatches(order, session?.user.email))).sort((a, b) => a.id.localeCompare(b.id)), [orders, selectedDate, role, session]);
+  const filteredInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50), [invoiceFilter, invoices]);
+  const customers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; phone: string; requests: number; completed: number; paidTotal: number }>();
     leads.forEach((lead) => {
-      const current = byPhone.get(lead.phone) ?? { id: lead.phone, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
-      current.requests += 1;
-      if (lead.status === 'completado') current.completed += 1;
-      current.paidTotal += invoices.filter((invoice) => getHouse(invoice.houseId)?.phone === lead.phone && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0);
-      byPhone.set(lead.phone, current);
+      const item = map.get(lead.phone) ?? { id: lead.phone, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
+      item.requests += 1;
+      if (lead.status === 'completed') item.completed += 1;
+      item.paidTotal += invoices.filter((invoice) => getHouse(invoice.houseId)?.phone === lead.phone && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0);
+      map.set(lead.phone, item);
     });
-    houses.forEach((house) => {
-      if (!byPhone.has(house.phone)) byPhone.set(house.phone, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: orders.filter((order) => order.houseId === house.id && order.status === 'FINALIZADA').length, paidTotal: invoices.filter((invoice) => invoice.houseId === house.id && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0) });
-    });
-    return [...byPhone.values()];
+    houses.forEach((house) => map.set(house.phone, map.get(house.phone) ?? { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: orders.filter((order) => order.houseId === house.id && order.status === 'FINALIZADA').length, paidTotal: invoices.filter((invoice) => invoice.houseId === house.id && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0) }));
+    return [...map.values()];
   }, [houses, invoices, leads, orders]);
-
-  const metrics = useMemo(() => ({
+  const metrics = {
     income: invoices.filter((invoice) => invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0),
     completed: orders.filter((order) => order.status === 'FINALIZADA').length,
-    pending: leads.filter((lead) => lead.status === 'pendiente').length,
-    measuredArea: leads.reduce((sum, lead) => sum + lead.areaSqFt, 0),
-  }), [invoices, leads, orders]);
+    pending: leads.filter((lead) => lead.status === 'pending').length,
+    area: leads.reduce((sum, lead) => sum + lead.areaSqFt, 0),
+  };
 
-  const filteredInvoices = useMemo(() => {
-    const sorted = [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    if (invoiceFilter === 'pagado') return sorted.filter((invoice) => invoice.paid);
-    if (invoiceFilter === 'no_pagado') return sorted.filter((invoice) => !invoice.paid);
-    return sorted;
-  }, [invoiceFilter, invoices]);
-
-  function getHouse(houseId: string) {
-    return houses.find((house) => house.id === houseId);
+  function getHouse(id: string) { return houses.find((house) => house.id === id); }
+  async function signIn() {
+    if (!supabase) return setMessage('Configura EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY');
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    setMessage(error ? `No se pudo iniciar sesion: ${error.message}` : 'Sesion activa. Sincronizando panel web...');
   }
+  async function signOut() { if (supabase) await supabase.auth.signOut(); setSession(null); setMessage('Sesion cerrada'); }
 
-  async function loadSupabaseData() {
-    if (!supabase) return;
-    try {
-      const [leadRows, pricingRows, galleryRows, reviewRows, workerRows, orderRows, invoiceRows] = await Promise.all([
-        supabase.from('leads').select('*').limit(50),
-        supabase.from('pricing_rules').select('*').limit(50),
-        supabase.from('gallery_items').select('*').limit(50),
-        supabase.from('customer_reviews').select('*').limit(50),
-        supabase.from('crew_members').select('*').limit(50),
-        supabase.from('work_orders').select('*').limit(100),
-        supabase.from('work_invoices').select('*').limit(50),
-      ]);
-
-      if (leadRows.data?.length) setLeads(leadRows.data.map((row: any) => ({
-        id: String(row.id),
-        customer: row.customer_name ?? row.name ?? 'Cliente',
-        phone: row.phone ?? '',
-        email: row.email ?? '',
-        address: row.address ?? '',
-        reference: row.reference_code ?? row.folio ?? String(row.id).slice(0, 8),
-        services: Array.isArray(row.services) ? row.services.join(', ') : row.services ?? 'Corte de cesped',
-        areaSqFt: Number(row.area_sq_ft ?? row.areaSqFt ?? 0),
-        details: row.details ?? row.notes ?? '',
-        gateCode: row.gate_code ?? row.gateCode,
-        status: (row.status ?? 'pendiente') as LeadStatus,
-        finalPrice: Number(row.final_price ?? row.finalPrice ?? row.price ?? 0),
-        scheduledAt: String(row.scheduled_at ?? row.scheduledAt ?? today).slice(0, 10),
-      })));
-      if (pricingRows.data?.length) setPricing(pricingRows.data.map((row: any) => ({ id: String(row.id), frequency: row.frequency ?? 'Quincenal', minArea: Number(row.min_area ?? row.minArea ?? 0), maxArea: Number(row.max_area ?? row.maxArea ?? 0), price: Number(row.price ?? 0) })));
-      if (galleryRows.data?.length) setGallery(galleryRows.data.map((row: any) => ({ id: String(row.id), title: row.title ?? row.caption ?? 'Galeria', type: row.type === 'video' ? 'video' : 'foto', visible: row.visible ?? row.is_public ?? true })));
-      if (reviewRows.data?.length) setReviews(reviewRows.data.map((row: any) => ({ id: String(row.id), customer: row.customer_name ?? row.name ?? 'Cliente', rating: Number(row.rating ?? 5), text: row.text ?? row.comment ?? '', visible: row.visible ?? row.approved ?? true })));
-      if (workerRows.data?.length) setWorkers(workerRows.data.map((row: any) => ({ id: String(row.id), name: row.name ?? 'Trabajador', email: row.email ?? '', active: row.active ?? true, passwordStatus: row.password_hash || row.has_password ? 'Activa' : 'Pendiente de crear' })));
-      if (orderRows.data?.length) setOrders(orderRows.data.map((row: any) => ({ id: String(row.id), houseId: String(row.house_id ?? row.houseId ?? row.service_plan_id ?? ''), date: String(row.scheduled_date ?? row.date ?? today).slice(0, 10), service: row.service ?? 'Corte de yarda', price: Number(row.invoice_price ?? row.price ?? 0), status: mapOrderStatus(row.status), paid: Boolean(row.paid ?? row.is_paid), workerId: row.worker_id ? String(row.worker_id) : undefined, notes: row.notes ?? undefined, invoiceId: row.invoice_id ? String(row.invoice_id) : undefined })));
-      if (invoiceRows.data?.length) setInvoices(invoiceRows.data.map((row: any) => ({ id: String(row.id), houseId: String(row.house_id ?? row.houseId ?? ''), createdAt: String(row.created_at ?? today).slice(0, 10), orderIds: Array.isArray(row.order_ids) ? row.order_ids.map(String) : [], total: Number(row.total ?? 0), paid: Boolean(row.paid ?? row.is_paid) })));
-      setSyncMessage('Datos sincronizados con Supabase');
-    } catch {
-      setSyncMessage('No se pudieron leer algunas tablas; usando modo demo');
-    }
-  }
-
-  function updateStatus(orderId: string, status: Status) {
-    setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status } : order));
-  }
-
-  function updateLeadStatus(leadId: string, status: LeadStatus) {
-    setLeads((current) => current.map((lead) => lead.id === leadId ? { ...lead, status } : lead));
-    void saveRow('leads', leadId, { status });
-  }
-
-  function deleteOrder(orderId: string) {
-    setOrders((current) => current.filter((order) => order.id !== orderId));
-  }
-
-  function deleteHouse(houseId: string) {
-    setHouses((current) => current.filter((house) => house.id !== houseId));
-    setOrders((current) => current.filter((order) => order.houseId !== houseId));
-  }
-
-  function saveHouse(nextHouse: House) {
-    setHouses((current) => {
-      const exists = current.some((house) => house.id === nextHouse.id);
-      return exists ? current.map((house) => house.id === nextHouse.id ? nextHouse : house) : [nextHouse, ...current];
-    });
-    if (!orders.some((order) => order.houseId === nextHouse.id)) {
-      setOrders((current) => [{
-        id: `o${Date.now()}`,
-        houseId: nextHouse.id,
-        date: selectedDate,
-        service: nextHouse.service,
-        price: nextHouse.price,
-        status: 'SOLICITADO',
-        paid: false,
-      }, ...current]);
-    }
-    setEditingHouse(null);
-  }
-
-  function createInvoice(houseId: string) {
-    const pending = orders.filter((order) => order.houseId === houseId && !order.paid && !order.invoiceId);
-    if (!pending.length) {
-      Alert.alert('Sin ordenes pendientes', 'Esta casa no tiene trabajos disponibles para invoice.');
-      return;
-    }
-    const invoiceId = `i${Date.now()}`;
-    const total = pending.reduce((sum, order) => sum + order.price, 0);
-    setInvoices((current) => [{ id: invoiceId, houseId, createdAt: today, orderIds: pending.map((order) => order.id), total, paid: false }, ...current]);
-    setOrders((current) => current.map((order) => pending.some((item) => item.id === order.id) ? { ...order, invoiceId } : order));
-  }
-
-  function deleteInvoice(invoiceId: string) {
-    setInvoices((current) => current.filter((invoice) => invoice.id !== invoiceId));
-    setOrders((current) => current.map((order) => order.invoiceId === invoiceId ? { ...order, invoiceId: undefined } : order));
-  }
-
-  function registerPayment() {
-    if (!paymentTarget) return;
-    const payment = { date: today, method: paymentMethod, note: paymentNote };
-    if (paymentTarget.type === 'order') {
-      setOrders((current) => current.map((order) => order.id === paymentTarget.id ? { ...order, paid: true, payment } : order));
-    } else {
-      const invoice = invoices.find((item) => item.id === paymentTarget.id);
-      setInvoices((current) => current.map((item) => item.id === paymentTarget.id ? { ...item, paid: true, payment } : item));
-      if (invoice) setOrders((current) => current.map((order) => invoice.orderIds.includes(order.id) ? { ...order, paid: true, payment } : order));
-    }
-    setPaymentTarget(null);
-    setPaymentNote('');
-  }
-
-  function openInvoicePdf(invoice: Invoice) {
-    const house = getHouse(invoice.houseId);
-    const subject = encodeURIComponent(`Invoice Nieto Green Care ${invoice.id}`);
-    const body = encodeURIComponent(`Cliente: ${house?.client}\nDireccion: ${house?.address}\nTotal: $${invoice.total}\n\nPDF listo para enviar desde el sitio/panel.`);
-    void Linking.openURL(`mailto:${house?.email ?? ''}?subject=${subject}&body=${body}`);
-  }
-
-  function addWorker() {
-    const id = `w${Date.now()}`;
-    const worker = { id, name: 'Nuevo trabajador', email: 'nuevo@nietogreencare.com', passwordStatus: 'Pendiente de crear' as const, active: true };
-    setWorkers((current) => [worker, ...current]);
-    void saveRow('crew_members', id, { id, name: worker.name, email: worker.email, active: true });
-  }
-
-  function toggleWorker(workerId: string) {
-    setWorkers((current) => current.map((worker) => worker.id === workerId ? { ...worker, active: !worker.active } : worker));
-    const worker = workers.find((item) => item.id === workerId);
-    void saveRow('crew_members', workerId, { active: !worker?.active });
-  }
-
-  function updatePricing(ruleId: string, price: number) {
-    setPricing((current) => current.map((rule) => rule.id === ruleId ? { ...rule, price } : rule));
-    void saveRow('pricing_rules', ruleId, { price });
-  }
-
-  function toggleGallery(itemId: string) {
-    const item = gallery.find((entry) => entry.id === itemId);
-    setGallery((current) => current.map((entry) => entry.id === itemId ? { ...entry, visible: !entry.visible } : entry));
-    void saveRow('gallery_items', itemId, { visible: !item?.visible });
-  }
-
-  function toggleReview(reviewId: string) {
-    const review = reviews.find((entry) => entry.id === reviewId);
-    setReviews((current) => current.map((entry) => entry.id === reviewId ? { ...entry, visible: !entry.visible } : entry));
-    void saveRow('customer_reviews', reviewId, { visible: !review?.visible, approved: !review?.visible });
-  }
-
-  function updateSection(sectionId: string, body: string) {
-    setSections((current) => current.map((section) => section.id === sectionId ? { ...section, body } : section));
-    void saveRow('site_sections', sectionId, { body });
+  async function loadData() {
+    if (!supabase || !session) return;
+    const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
+      supabase.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('pricing_rules').select('*').order('min_sq_ft').limit(100),
+      supabase.from('gallery').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('app_settings').select('value').eq('key', 'customer_reviews').maybeSingle(),
+      supabase.from('crew_members').select('*').order('full_name').limit(100),
+      supabase.from('service_plans').select('*').order('created_at', { ascending: false }).limit(300),
+      supabase.from('work_orders').select('*').order('service_date', { ascending: false }).limit(1000),
+      supabase.from('work_invoices').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('site_sections').select('*').order('section').limit(100),
+      supabase.from('weekly_summaries').select('*').order('week_start', { ascending: false }).limit(60),
+    ]);
+    if (leadRows.error) return setMessage(`No se pudieron leer solicitudes: ${leadRows.error.message}`);
+    const leadData = leadRows.data ?? [];
+    const planByLead = new Map((planRows.data ?? []).map((row: any) => [String(row.lead_id), row]));
+    const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row: any) => [String(row.order_id), row]));
+    setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0) })));
+    setHouses(leadData.map((row: any) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
+    if (priceRows.data) setPrices(priceRows.data.map((row: any) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
+    if (galleryRows.data) setGallery(galleryRows.data.map((row: any) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
+    setReviews(((reviewRow.data?.value as { items?: any[] } | null)?.items ?? []).map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', rating: Number(row.rating ?? 5), text: row.comment ?? '', visible: Boolean(row.approved ?? true) })));
+    if (workerRows.data) setWorkers(workerRows.data.map((row: any) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
+    if (orderRows.data) setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? today).slice(0, 10), service: 'Corte de yarda', price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
+    if (invoiceRows.data) setInvoices(invoiceRows.data.map((row: any) => { const order = (orderRows.data ?? []).find((item: any) => item.id === row.order_id); return { id: row.id, houseId: order?.lead_id ?? '', createdAt: String(row.issued_at ?? row.created_at ?? today).slice(0, 10), orderIds: [row.order_id], number: row.invoice_number, total: Number(row.total ?? 0), paid: Number(order?.paid_amount ?? 0) >= Number(row.total ?? 0), sentAt: row.sent_at }; }));
+    if (sectionRows.data) setSections(sectionRows.data.map((row: any) => ({ id: row.id, section: row.section ?? row.key ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? row.content ?? '', visible: Boolean(row.visible ?? true) })));
+    if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row: any) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
+    await ensureCurrentWeeklySummary(orderRows.data ?? []);
+    setMessage('Datos sincronizados con el panel web');
   }
 
   async function saveRow(table: string, id: string, values: Record<string, unknown>) {
-    if (!supabase) return;
+    if (!supabase || !session) return;
     const { error } = await supabase.from(table).update(values).eq('id', id);
-    if (error) setSyncMessage(`Pendiente de guardar en ${table}: ${error.message}`);
+    if (error) setMessage(`Pendiente de guardar en ${table}: ${error.message}`);
   }
+  async function deleteRow(table: string, id: string) {
+    if (!supabase || !session) return;
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) setMessage(`No se pudo eliminar en ${table}: ${error.message}`);
+  }
+  function updateStatus(id: string, status: Status) {
+    setOrders((current) => current.map((order) => order.id === id ? { ...order, status } : order));
+    void saveRow('work_orders', id, { status: dbOrderStatus(status), completed_at: status === 'FINALIZADA' ? new Date().toISOString() : null });
+  }
+  function updateLeadStatus(id: string, status: LeadStatus) { setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead)); void saveRow('leads', id, { status }); }
+  function deleteOrder(id: string) { setOrders((current) => current.filter((order) => order.id !== id)); void deleteRow('work_orders', id); }
+  function deleteHouse(id: string) { setHouses((current) => current.filter((house) => house.id !== id)); setOrders((current) => current.filter((order) => order.houseId !== id)); void saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() }); }
+  async function saveHouse(house: House) {
+    const isUuid = /^[0-9a-f-]{36}$/i.test(house.id);
+    const payload = { customer_name: house.client || 'Cliente', customer_phone: house.phone || '0000000000', customer_email: house.email || null, address: house.address || 'Direccion pendiente', city: house.city || 'Central Texas', zip_code: house.zipCode || '78626', final_price: house.price, details: house.service, additional_notes: house.notes, status: 'scheduled', requested_date: selectedDate };
+    if (supabase && session) {
+      const lead = isUuid ? await supabase.from('leads').update(payload).eq('id', house.id).select().single() : await supabase.from('leads').insert({ ...payload, reference_code: `APP-${Date.now()}`, source: 'mobile_app', selected_services: [house.service || 'lawn_service'], service_count: 1, area_sq_ft: 0, area_sq_yd: 0, estimated_cubic_yards: 0 }).select().single();
+      const leadId = lead.data?.id ?? house.id;
+      if (!house.planId) {
+        const cadence = house.frequency === 'Cada 8 dias' ? 'weekly' : house.frequency === 'Una vez' ? 'one_time' : 'bi_weekly';
+        const plan = await supabase.from('service_plans').insert({ lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null }).select().single();
+        if (plan.data?.id) await supabase.from('work_orders').insert({ plan_id: plan.data.id, lead_id: leadId, crew_member_id: null, service_date: selectedDate, start_time: '08:00', duration_minutes: 60, status: 'scheduled', price: house.price, notes: house.notes || null });
+      }
+      void loadData();
+    }
+    setEditingHouse(null);
+  }
+  function createInvoice(houseId: string) {
+    const pending = orders.filter((order) => order.houseId === houseId && !order.paid && !order.invoiceId);
+    pending.forEach((order) => { if (supabase && session) void supabase.from('work_invoices').upsert({ order_id: order.id, invoice_number: `NGC-${new Date().getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`, total: order.price, customer_email: getHouse(order.houseId)?.email || null }, { onConflict: 'order_id' }); });
+    if (pending.length) void loadData();
+  }
+  function registerPayment() {
+    if (!paymentTarget) return;
+    const orderIds = paymentTarget.type === 'order' ? [paymentTarget.id] : invoices.find((item) => item.id === paymentTarget.id)?.orderIds ?? [];
+    orderIds.forEach((id) => { const order = orders.find((item) => item.id === id); void saveRow('work_orders', id, { paid_amount: order?.price ?? 0, payment_method: dbPay(paymentMethod), paid_at: new Date().toISOString(), notes: paymentNote || order?.notes || null }); });
+    setOrders((current) => current.map((order) => orderIds.includes(order.id) ? { ...order, paid: true, paidAmount: order.price } : order));
+    setInvoices((current) => current.map((invoice) => invoice.id === paymentTarget.id || invoice.orderIds.some((id) => orderIds.includes(id)) ? { ...invoice, paid: true } : invoice));
+    setPaymentTarget(null); setPaymentNote('');
+  }
+  function addWorker() { if (supabase && session) void supabase.from('crew_members').insert({ full_name: 'Nuevo trabajador', email: 'nuevo@nietogreencare.com', active: true }).then(() => loadData()); }
+  function toggleWorker(id: string) { const worker = workers.find((item) => item.id === id); setWorkers((current) => current.map((item) => item.id === id ? { ...item, active: !item.active } : item)); void saveRow('crew_members', id, { active: !worker?.active }); }
+  function updatePrice(id: string, price: number) { setPrices((current) => current.map((item) => item.id === id ? { ...item, price } : item)); void saveRow('pricing_rules', id, { price }); }
+  function toggleGallery(id: string) { const item = gallery.find((entry) => entry.id === id); setGallery((current) => current.map((entry) => entry.id === id ? { ...entry, visible: !entry.visible } : entry)); void saveRow('gallery', id, { is_published: !item?.visible }); }
+  function toggleReview(id: string) {
+    const next = reviews.map((entry) => entry.id === id ? { ...entry, visible: !entry.visible } : entry);
+    setReviews(next);
+    if (supabase && session) void supabase.from('app_settings').upsert({ key: 'customer_reviews', value: { items: next.map((review) => ({ id: review.id, customer_name: review.customer, city: '', rating: review.rating, comment: review.text, approved: review.visible, created_at: new Date().toISOString() })) }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  }
+  function workerMatches(order: Order, email?: string | null) {
+    if (!email) return false;
+    const worker = workers.find((item) => item.id === order.workerId);
+    return worker?.email.toLowerCase() === email.toLowerCase();
+  }
+  async function ensureCurrentWeeklySummary(rows: any[]) {
+    if (!supabase || !session || role === 'worker') return;
+    const { start, end } = weekRange();
+    const summary = buildWeeklySummary(rows, start, end);
+    const { error } = await supabase.from('weekly_summaries').upsert({
+      week_start: start,
+      week_end: end,
+      completed_orders: summary.completed,
+      cancelled_orders: summary.cancelled,
+      unpaid_orders: summary.unpaid,
+      paid_orders: summary.paid,
+      total_collected: summary.total,
+      notes: summary.notes,
+      generated_at: new Date().toISOString(),
+    }, { onConflict: 'week_start' });
+    if (!error) setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
+  }
+
+  if (!role) return (
+    <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
+      <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" />
+      <Text style={styles.sectionTitle}>Selecciona tu acceso</Text>
+      <Pressable style={styles.primaryButton} onPress={() => setRole('worker')}><Text style={styles.primaryText}>Panel para trabajador</Text></Pressable>
+      <Pressable style={styles.primaryButton} onPress={() => setRole('admin')}><Text style={styles.primaryText}>Panel administrador</Text></Pressable>
+      <Text style={styles.notes}>Ambos accesos usan la misma base de datos del sitio.</Text>
+    </View></SafeAreaView>
+  );
+
+  if (!session) return (
+    <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
+      <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" /><Text style={styles.sectionTitle}>{role === 'worker' ? 'Acceso trabajador' : 'Acceso administrador'}</Text>
+      <Text style={styles.notes}>Entra con el correo autorizado en Supabase para vincular app y sitio.</Text>
+      <Field label="Correo" value={authEmail} onChangeText={setAuthEmail} />
+      <Field label="Contrasena" value={authPassword} onChangeText={setAuthPassword} secureTextEntry />
+      <Pressable style={styles.primaryButton} onPress={() => void signIn()}><Text style={styles.primaryText}>Entrar y sincronizar</Text></Pressable>
+      <Pressable style={styles.smallButton} onPress={() => setRole(null)}><Text style={styles.smallButtonText}>Cambiar acceso</Text></Pressable>
+      <Text style={styles.cardMeta}>{message}</Text>
+    </View></SafeAreaView>
+  );
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.brand}>NIETO GREEN CARE</Text>
-          <Text style={styles.subtitle}>{syncMessage}</Text>
-        </View>
-        <Pressable style={styles.siteButton} onPress={() => void Linking.openURL(SITE_URL)}>
-          <Ionicons name="globe-outline" size={18} color="#052e16" />
-          <Text style={styles.siteText}>Sitio</Text>
-        </Pressable>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
-        <TabButton active={tab === 'dashboard'} icon="stats-chart-outline" label="Dashboard" onPress={() => setTab('dashboard')} />
-        <TabButton active={tab === 'solicitudes'} icon="mail-unread-outline" label="Solicitudes" onPress={() => setTab('solicitudes')} />
-        <TabButton active={tab === 'clientes'} icon="people-circle-outline" label="Clientes" onPress={() => setTab('clientes')} />
-        <TabButton active={tab === 'agenda'} icon="calendar-outline" label="Agenda" onPress={() => setTab('agenda')} />
-        <TabButton active={tab === 'casas'} icon="home-outline" label="Casas" onPress={() => setTab('casas')} />
-        <TabButton active={tab === 'invoices'} icon="document-text-outline" label="Facturas" onPress={() => setTab('invoices')} />
-        <TabButton active={tab === 'trabajadores'} icon="construct-outline" label="Trabajadores" onPress={() => setTab('trabajadores')} />
-        <TabButton active={tab === 'precios'} icon="pricetags-outline" label="Precios" onPress={() => setTab('precios')} />
-        <TabButton active={tab === 'galeria'} icon="images-outline" label="Galeria" onPress={() => setTab('galeria')} />
-        <TabButton active={tab === 'opiniones'} icon="star-outline" label="Opiniones" onPress={() => setTab('opiniones')} />
-        <TabButton active={tab === 'qr'} icon="qr-code-outline" label="QR" onPress={() => setTab('qr')} />
-        <TabButton active={tab === 'editor'} icon="color-palette-outline" label="Editor" onPress={() => setTab('editor')} />
-      </ScrollView>
-
+      <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View><MiniButton icon="globe-outline" label="Sitio" onPress={() => void Linking.openURL(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{(['dashboard', 'solicitudes', 'clientes', 'agenda', 'casas', 'invoices', 'trabajadores', 'precios', 'galeria', 'opiniones', 'qr', 'editor'] as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={item} onPress={() => setTab(item)} />)}</ScrollView>
       <ScrollView contentContainerStyle={styles.content}>
-        {tab === 'dashboard' && (
-          <>
-            <SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadSupabaseData()} />
-            <View style={styles.metricsGrid}>
-              <MetricCard label="Ingresos" value={`$${metrics.income.toFixed(2)}`} />
-              <MetricCard label="Trabajos hechos" value={String(metrics.completed)} />
-              <MetricCard label="Solicitudes pendientes" value={String(metrics.pending)} />
-              <MetricCard label="Area medida" value={`${metrics.measuredArea.toLocaleString()} ft²`} />
-            </View>
-            <Text style={styles.notes}>No borres el panel web hasta que estos modulos esten probados con datos reales: solicitudes, clientes, agenda, facturas, galeria, opiniones, QR y editor del sitio.</Text>
-          </>
-        )}
-
-        {tab === 'solicitudes' && (
-          <>
-            <SectionTitle title="Solicitudes del cotizador" />
-            {leads.map((lead) => (
-              <View key={lead.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.grow}>
-                    <Text style={styles.cardTitle}>{lead.customer}</Text>
-                    <Text style={styles.cardMeta}>{lead.address}</Text>
-                    <Text style={styles.cardMeta}>{lead.reference} - {lead.areaSqFt.toLocaleString()} ft²</Text>
-                    <Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text>
-                  </View>
-                  <StatusPill label={lead.status.toUpperCase()} tone={lead.status === 'cancelado' ? 'gray' : lead.status === 'completado' ? 'green' : 'white'} />
-                </View>
-                <Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo de porton: ${lead.gateCode}` : ''}</Text>
-                <View style={styles.actions}>
-                  <IconButton color="#2563eb" icon="calendar-outline" onPress={() => updateLeadStatus(lead.id, 'programado')} label="Programar" />
-                  <IconButton color="#0f766e" icon="checkmark-done-outline" onPress={() => updateLeadStatus(lead.id, 'completado')} label="Completar" />
-                  <IconButton color="#6b7280" icon="ban-outline" onPress={() => updateLeadStatus(lead.id, 'cancelado')} label="Cancelar" />
-                  <IconButton color="#16a34a" icon="logo-google" onPress={() => void Linking.openURL(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)} label="Google Calendar" />
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'clientes' && (
-          <>
-            <SectionTitle title="Clientes" />
-            {customers.map((customer) => (
-              <View key={customer.id} style={styles.card}>
-                <Text style={styles.cardTitle}>{customer.name}</Text>
-                <Text style={styles.cardMeta}>{customer.phone}</Text>
-                <Text style={styles.cardMeta}>Solicitudes: {customer.requests} - Trabajos realizados: {customer.completed}</Text>
-                <Text style={styles.total}>Total pagado: ${customer.paidTotal.toFixed(2)}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'agenda' && (
-          <>
-            <SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(today)} />
-            <TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />
-            {visibleOrders.map((order) => <OrderCard key={order.id} order={order} house={getHouse(order.houseId)} worker={workers.find((worker) => worker.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => { setTab('casas'); setEditingHouse(getHouse(order.houseId) ?? null); }} />)}
-            {!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}
-          </>
-        )}
-
-        {tab === 'casas' && (
-          <>
-            <SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />
-            {houses.map((house) => (
-              <View key={house.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.grow}>
-                    <Text style={styles.cardTitle}>{house.client}</Text>
-                    <Text style={styles.cardMeta}>{house.address}</Text>
-                    <Text style={styles.cardMeta}>{house.frequency} - ${house.price}</Text>
-                  </View>
-                  <StatusPill label={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'} />
-                </View>
-                <Text style={styles.notes}>{house.notes}</Text>
-                <View style={styles.actions}>
-                  <IconButton color="#2563eb" icon="list-outline" onPress={() => createInvoice(house.id)} label="Generar invoice" />
-                  <IconButton color="#eab308" icon="create-outline" onPress={() => setEditingHouse(house)} label="Editar" />
-                  <IconButton color="#dc2626" icon="trash-outline" onPress={() => deleteHouse(house.id)} label="Eliminar" />
-                </View>
-                <Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'invoices' && (
-          <>
-            <SectionTitle title="Invoices" />
-            <View style={styles.segment}>
-              {(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}
-            </View>
-            {filteredInvoices.slice(0, 50).map((invoice) => {
-              const house = getHouse(invoice.houseId);
-              return (
-                <View key={invoice.id} style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.grow}>
-                      <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text>
-                      <Text style={styles.cardMeta}>{invoice.createdAt} - {house?.address}</Text>
-                      <Text style={styles.total}>${invoice.total.toFixed(2)}</Text>
-                    </View>
-                    <StatusPill label={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'} />
-                  </View>
-                  <View style={styles.actions}>
-                    <IconButton color="#2563eb" icon="eye-outline" onPress={() => setPaymentTarget({ type: 'invoice', id: invoice.id })} label="Info/pago" />
-                    <IconButton color="#eab308" icon="document-attach-outline" onPress={() => openInvoicePdf(invoice)} label="PDF" />
-                    <IconButton color="#dc2626" icon="trash-outline" onPress={() => deleteInvoice(invoice.id)} label="Eliminar" />
-                  </View>
-                </View>
-              );
-            })}
-          </>
-        )}
-
-        {tab === 'trabajadores' && (
-          <>
-            <SectionTitle title="Trabajadores" action="Agregar" onPress={addWorker} />
-            {workers.map((worker) => (
-              <View key={worker.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.grow}>
-                    <Text style={styles.cardTitle}>{worker.name}</Text>
-                    <Text style={styles.cardMeta}>{worker.email}</Text>
-                    <Text style={styles.cardMeta}>Contrasena: {worker.passwordStatus}</Text>
-                    <Text style={styles.cardMeta}>Acceso: {worker.active ? 'Activo' : 'Desactivado'}</Text>
-                  </View>
-                  <Ionicons name="person-circle-outline" size={36} color="#16a34a" />
-                </View>
-                <Text style={styles.notes}>Lista del dia: {orders.filter((order) => order.workerId === worker.id && order.date === selectedDate).length} trabajos asignados.</Text>
-                <View style={styles.actions}>
-                  <IconButton color={worker.active ? '#6b7280' : '#16a34a'} icon={worker.active ? 'lock-closed-outline' : 'lock-open-outline'} onPress={() => toggleWorker(worker.id)} label="Cambiar acceso" />
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'precios' && (
-          <>
-            <SectionTitle title="Precios de cesped" />
-            {pricing.map((rule) => (
-              <View key={rule.id} style={styles.card}>
-                <Text style={styles.cardTitle}>{rule.frequency}</Text>
-                <Text style={styles.cardMeta}>{rule.minArea.toLocaleString()} - {rule.maxArea.toLocaleString()} ft²</Text>
-                <Field label="Precio" value={String(rule.price)} keyboardType="numeric" onChangeText={(value) => updatePricing(rule.id, Number(value) || 0)} />
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'galeria' && (
-          <>
-            <SectionTitle title="Galeria" />
-            <Text style={styles.notes}>Formatos aceptados por el panel: JPG, PNG, WEBP, AVIF, MP4, MOV y WEBM. Limite recomendado: 50 MB.</Text>
-            {gallery.map((item) => (
-              <View key={item.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.grow}>
-                    <Text style={styles.cardTitle}>{item.title}</Text>
-                    <Text style={styles.cardMeta}>{item.type.toUpperCase()}</Text>
-                  </View>
-                  <StatusPill label={item.visible ? 'PUBLICO' : 'OCULTO'} tone={item.visible ? 'green' : 'gray'} />
-                </View>
-                <View style={styles.actions}>
-                  <IconButton color="#2563eb" icon={item.visible ? 'eye-off-outline' : 'eye-outline'} onPress={() => toggleGallery(item.id)} label="Publicar u ocultar" />
-                  <IconButton color="#dc2626" icon="trash-outline" onPress={() => setGallery((current) => current.filter((entry) => entry.id !== item.id))} label="Eliminar" />
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'opiniones' && (
-          <>
-            <SectionTitle title="Opiniones" />
-            {reviews.map((review) => (
-              <View key={review.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.grow}>
-                    <Text style={styles.cardTitle}>{review.customer}</Text>
-                    <Text style={styles.cardMeta}>{'★'.repeat(review.rating)}</Text>
-                  </View>
-                  <StatusPill label={review.visible ? 'PUBLICA' : 'OCULTA'} tone={review.visible ? 'green' : 'gray'} />
-                </View>
-                <Text style={styles.notes}>{review.text}</Text>
-                <View style={styles.actions}>
-                  <IconButton color="#2563eb" icon={review.visible ? 'eye-off-outline' : 'eye-outline'} onPress={() => toggleReview(review.id)} label="Aprobar u ocultar" />
-                  <IconButton color="#dc2626" icon="trash-outline" onPress={() => setReviews((current) => current.filter((entry) => entry.id !== review.id))} label="Eliminar" />
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {tab === 'qr' && (
-          <>
-            <SectionTitle title="Codigo QR del cotizador" />
-            <View style={styles.qrBox}>
-              <Ionicons name="qr-code-outline" size={132} color="#052e16" />
-              <Text style={styles.cardTitle}>Cotizador publico</Text>
-              <Text style={styles.cardMeta}>{SITE_URL}/quote</Text>
-              <Pressable style={styles.primaryButton} onPress={() => void Linking.openURL(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable>
-            </View>
-          </>
-        )}
-
-        {tab === 'editor' && (
-          <>
-            <SectionTitle title="Editor del sitio" />
-            <Text style={styles.notes}>Este modulo guarda textos, servicios, cobertura, colores y notas en Supabase para que el sitio publico deje de depender de cambios en codigo.</Text>
-            {sections.map((section) => (
-              <View key={section.id} style={styles.card}>
-                <Text style={styles.cardTitle}>{section.section}</Text>
-                <Text style={styles.cardMeta}>{section.title}</Text>
-                <Field label="Contenido" value={section.body} onChangeText={(value) => updateSection(section.id, value)} multiline />
-              </View>
-            ))}
-          </>
-        )}
+        {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
+        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => void Linking.openURL(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
+        {tab === 'clientes' && <><SectionTitle title="Clientes" />{customers.map((c) => <Card key={c.id} title={c.name} meta={`${c.phone} - Solicitudes: ${c.requests} - Trabajos: ${c.completed}`}><Text style={styles.total}>Total pagado: ${c.paidTotal.toFixed(2)}</Text></Card>)}</>}
+        {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(today)} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => { setTab('casas'); setEditingHouse(getHouse(order.houseId) ?? null); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
+        {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
+        {tab === 'invoices' && <><SectionTitle title="Invoices" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['document-attach-outline', '#eab308', () => void Linking.openURL(`${SITE_URL}/api/admin/operations/invoice-file?id=${encodeURIComponent(invoice.id)}`)], ['trash-outline', '#dc2626', () => { setInvoices((current) => current.filter((item) => item.id !== invoice.id)); void deleteRow('work_invoices', invoice.id); }]]} /></Card>)}</>}
+        {tab === 'trabajadores' && <><SectionTitle title="Trabajadores" action="Agregar" onPress={addWorker} />{workers.map((worker) => <Card key={worker.id} title={worker.name} meta={`${worker.email} - ${worker.active ? 'Activo' : 'Desactivado'}`}><Text style={styles.notes}>Lista del dia: {orders.filter((order) => order.workerId === worker.id && order.date === selectedDate).length} trabajos asignados.</Text><Actions items={[[worker.active ? 'lock-closed-outline' : 'lock-open-outline', worker.active ? '#6b7280' : '#16a34a', () => toggleWorker(worker.id)]]} /></Card>)}</>}
+        {tab === 'precios' && <><SectionTitle title="Precios de cesped" />{prices.map((price) => <Card key={price.id} title={price.name} meta={`${price.minArea.toLocaleString()} - ${price.maxArea.toLocaleString()} ft²`}><Field label="Precio" value={String(price.price)} keyboardType="numeric" onChangeText={(value) => updatePrice(price.id, Number(value) || 0)} /></Card>)}</>}
+        {tab === 'galeria' && <><SectionTitle title="Galeria" />{gallery.map((item) => <Card key={item.id} title={item.title} meta={item.type.toUpperCase()} status={item.visible ? 'PUBLICO' : 'OCULTO'} tone={item.visible ? 'green' : 'gray'}><Actions items={[[item.visible ? 'eye-off-outline' : 'eye-outline', '#2563eb', () => toggleGallery(item.id)], ['trash-outline', '#dc2626', () => setGallery((current) => current.filter((entry) => entry.id !== item.id))]]} /></Card>)}</>}
+        {tab === 'opiniones' && <><SectionTitle title="Opiniones" />{reviews.map((review) => <Card key={review.id} title={review.customer} meta={'★'.repeat(review.rating)} status={review.visible ? 'PUBLICA' : 'OCULTA'} tone={review.visible ? 'green' : 'gray'}><Text style={styles.notes}>{review.text}</Text><Actions items={[[review.visible ? 'eye-off-outline' : 'eye-outline', '#2563eb', () => toggleReview(review.id)], ['trash-outline', '#dc2626', () => setReviews((current) => current.filter((entry) => entry.id !== review.id))]]} /></Card>)}</>}
+        {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => void Linking.openURL(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
+        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); void saveRow('site_sections', section.id, { body }); }} /></Card>)}</>}
       </ScrollView>
-
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
     </SafeAreaView>
   );
 }
 
-function emptyHouse(): House {
-  return { id: `h${Date.now()}`, client: '', address: '', phone: '', email: '', frequency: 'Cada 15 dias', service: 'Corte de yarda', price: 0, active: true, notes: '' };
+function emptyHouse(): House { return { id: `h${Date.now()}`, client: '', address: '', phone: '', email: '', frequency: 'Cada 15 dias', service: 'Corte de yarda', price: 0, active: true, notes: '' }; }
+function mapOrderStatus(status?: string): Status { if (status === 'completed' || status === 'FINALIZADA') return 'FINALIZADA'; if (status === 'cancelled' || status === 'CANCELADA') return 'CANCELADA'; return 'SOLICITADO'; }
+function dbOrderStatus(status: Status) { return status === 'FINALIZADA' ? 'completed' : status === 'CANCELADA' ? 'cancelled' : 'scheduled'; }
+function mapLeadStatus(status?: string): LeadStatus { if (status === 'scheduled') return 'scheduled'; if (status === 'completed') return 'completed'; if (status === 'cancelled') return 'cancelled'; return 'pending'; }
+function leadLabel(status: LeadStatus) { return status === 'scheduled' ? 'PROGRAMADO' : status === 'completed' ? 'COMPLETADO' : status === 'cancelled' ? 'CANCELADO' : 'PENDIENTE'; }
+function dbPay(method: PayMethod) { return method === 'CashApp' ? 'cash_app' : method.toLowerCase(); }
+function mapCadence(cadence?: string) { return cadence === 'weekly' ? 'Cada 8 dias' : cadence === 'one_time' ? 'Una vez' : 'Cada 15 dias'; }
+function weekRange(date = new Date()) {
+  const startDate = new Date(date);
+  const day = startDate.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  startDate.setDate(startDate.getDate() + diff);
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 6);
+  return { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) };
+}
+function buildWeeklySummary(rows: any[], start: string, end: string): WeeklySummary {
+  const weekRows = rows.filter((row) => String(row.service_date ?? '').slice(0, 10) >= start && String(row.service_date ?? '').slice(0, 10) <= end);
+  const completed = weekRows.filter((row) => row.status === 'completed').length;
+  const cancelled = weekRows.filter((row) => row.status === 'cancelled').length;
+  const paid = weekRows.filter((row) => Number(row.paid_amount ?? 0) >= Number(row.price ?? 0) && Number(row.price ?? 0) > 0).length;
+  const unpaid = weekRows.filter((row) => row.status === 'completed' && Number(row.paid_amount ?? 0) < Number(row.price ?? 0)).length;
+  const total = weekRows.reduce((sum, row) => sum + Number(row.paid_amount ?? 0), 0);
+  return { weekStart: start, weekEnd: end, completed, cancelled, unpaid, paid, total, notes: `Ordenes revisadas: ${weekRows.length}. Pagadas: ${paid}. Sin liquidar: ${unpaid}.` };
 }
 
-function mapOrderStatus(status: string | undefined): Status {
-  if (status === 'completed' || status === 'completado' || status === 'FINALIZADA') return 'FINALIZADA';
-  if (status === 'cancelled' || status === 'cancelado' || status === 'CANCELADA') return 'CANCELADA';
-  return 'SOLICITADO';
+function TabButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>;
 }
-
-function TabButton({ active, icon, label, onPress }: { active: boolean; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
-  return <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}><Ionicons name={icon} size={18} color={active ? '#052e16' : '#475569'} /><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>;
+function MiniButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return <Pressable style={styles.siteButton} onPress={onPress}><Ionicons name={icon} size={18} color="#052e16" /><Text style={styles.siteText}>{label}</Text></Pressable>;
 }
-
 function SectionTitle({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
   return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{action && <Pressable style={styles.smallButton} onPress={onPress}><Text style={styles.smallButtonText}>{action}</Text></Pressable>}</View>;
 }
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return <View style={styles.metricCard}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
+function Metric({ label, value }: { label: string; value: string }) { return <View style={styles.metricCard}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>; }
+function Card({ title, meta, status, tone = 'white', children }: { title: string; meta?: string; status?: string; tone?: 'green' | 'gray' | 'red' | 'white'; children?: ReactNode }) {
+  return <View style={styles.card}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{title}</Text>{meta ? <Text style={styles.cardMeta}>{meta}</Text> : null}</View>{status ? <StatusPill label={status} tone={tone} /> : null}</View>{children}</View>;
 }
-
-function OrderCard({ order, house, worker, onStatus, onPay, onDelete, onHistory }: { order: WorkOrder; house?: House; worker?: Worker; onStatus: (id: string, status: Status) => void; onPay: (id: string) => void; onDelete: (id: string) => void; onHistory: () => void }) {
+function Actions({ items }: { items: [keyof typeof Ionicons.glyphMap, string, () => void][] }) {
+  return <View style={styles.actions}>{items.map(([icon, color, onPress], index) => <IconButton key={`${icon}-${index}`} color={color} icon={icon} onPress={onPress} />)}</View>;
+}
+function OrderCard({ order, house, worker, onStatus, onPay, onDelete, onHistory }: { order: Order; house?: House; worker?: Worker; onStatus: (id: string, status: Status) => void; onPay: (id: string) => void; onDelete: (id: string) => void; onHistory: () => void }) {
   const rowStyle = order.status === 'FINALIZADA' ? styles.doneCard : order.status === 'CANCELADA' ? styles.canceledCard : undefined;
-  return (
-    <View style={[styles.card, rowStyle]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.grow}>
-          <Text style={styles.cardTitle}>{house?.address ?? 'Direccion pendiente'}</Text>
-          <Text style={styles.cardMeta}>{order.service} - {worker?.name ?? 'Sin asignar'}</Text>
-          <Text style={styles.total}>${order.price.toFixed(2)}</Text>
-        </View>
-        <StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} />
-      </View>
-      {!!order.notes && <Text style={styles.notes}>{order.notes}</Text>}
-      <View style={styles.actions}>
-        <IconButton color="#0f766e" icon="checkmark-done-outline" onPress={() => onStatus(order.id, 'FINALIZADA')} label="Finalizada" />
-        <IconButton color="#6b7280" icon="ban-outline" onPress={() => onStatus(order.id, 'CANCELADA')} label="Cancelada" />
-        <IconButton color="#2563eb" icon="albums-outline" disabled={order.paid} onPress={onHistory} label="Historial" />
-        <IconButton color="#16a34a" icon="cash-outline" disabled={order.paid} onPress={() => onPay(order.id)} label="Pago" />
-        <IconButton color="#dc2626" icon="trash-outline" onPress={() => onDelete(order.id)} label="Eliminar" />
-      </View>
-    </View>
-  );
+  return <View style={[styles.card, rowStyle]}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{house?.address ?? 'Direccion pendiente'}</Text><Text style={styles.cardMeta}>{order.service} - {worker?.name ?? 'Sin asignar'}</Text><Text style={styles.total}>${order.price.toFixed(2)}</Text></View><StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} /></View>{order.notes ? <Text style={styles.notes}>{order.notes}</Text> : null}<Actions items={[['checkmark-done-outline', '#0f766e', () => onStatus(order.id, 'FINALIZADA')], ['ban-outline', '#6b7280', () => onStatus(order.id, 'CANCELADA')], ['albums-outline', order.paid ? '#cbd5e1' : '#2563eb', onHistory], ['cash-outline', order.paid ? '#cbd5e1' : '#16a34a', () => onPay(order.id)], ['trash-outline', '#dc2626', () => onDelete(order.id)]]} /></View>;
 }
-
-function IconButton({ color, icon, label, disabled, onPress }: { color: string; icon: keyof typeof Ionicons.glyphMap; label: string; disabled?: boolean; onPress: () => void }) {
-  return <Pressable accessibilityLabel={label} disabled={disabled} style={[styles.iconButton, { backgroundColor: disabled ? '#cbd5e1' : color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>;
-}
-
-function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) {
-  return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>;
-}
-
+function IconButton({ color, icon, onPress }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) { return <Pressable style={[styles.iconButton, { backgroundColor: color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
+function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) { return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>; }
 function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => void }) {
   const [draft, setDraft] = useState<House | null>(house);
   useEffect(() => setDraft(house), [house]);
   if (!draft) return null;
-  return (
-    <Modal visible={!!house} animationType="slide">
-      <SafeAreaView style={styles.modal}>
-        <SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} />
-        <ScrollView contentContainerStyle={styles.content}>
-          <Field label="Cliente" value={draft.client} onChangeText={(client) => setDraft({ ...draft, client })} />
-          <Field label="Direccion" value={draft.address} onChangeText={(address) => setDraft({ ...draft, address })} />
-          <Field label="Telefono" value={draft.phone} onChangeText={(phone) => setDraft({ ...draft, phone })} />
-          <Field label="Correo" value={draft.email} onChangeText={(email) => setDraft({ ...draft, email })} />
-          <Field label="Servicio" value={draft.service} onChangeText={(service) => setDraft({ ...draft, service })} />
-          <Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />
-          <Field label="Frecuencia" value={draft.frequency} onChangeText={(frequency) => setDraft({ ...draft, frequency: frequency as Frequency })} />
-          <Field label="Notas" value={draft.notes} onChangeText={(notes) => setDraft({ ...draft, notes })} multiline />
-          <Pressable style={styles.primaryButton} onPress={() => onSave(draft)}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'phone', 'email', 'service', 'frequency', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} /><Pressable style={styles.primaryButton} onPress={() => onSave(draft)}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
-
-function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PaymentMethod; note: string; onMethod: (method: PaymentMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.paymentBox}>
-          <SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} />
-          <Text style={styles.cardMeta}>Fecha: {today}</Text>
-          <View style={styles.segment}>
-            {(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PaymentMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}
-          </View>
-          <Field label="Nota opcional" value={note} onChangeText={onNote} multiline />
-          <Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
+function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
+  return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {today}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
 }
-
-function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean }) {
+function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean }) {
   return <View><Text style={styles.label}>{props.label}</Text><TextInput {...props} style={[styles.input, props.multiline && styles.textarea]} placeholder={props.label} /></View>;
 }
-
-function EmptyState({ text }: { text: string }) {
-  return <View style={styles.empty}><Ionicons name="calendar-clear-outline" size={38} color="#64748b" /><Text style={styles.emptyText}>{text}</Text></View>;
-}
+function EmptyState({ text }: { text: string }) { return <View style={styles.empty}><Ionicons name="calendar-clear-outline" size={38} color="#64748b" /><Text style={styles.emptyText}>{text}</Text></View>; }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#f8fafc' },
-  header: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14, backgroundColor: '#f0fdf4', borderBottomWidth: 1, borderBottomColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  loginBox: { flex: 1, justifyContent: 'center', padding: 18, gap: 12 },
+  logo: { width: 150, height: 150, alignSelf: 'center', marginBottom: 4 },
+  headerLogo: { width: 42, height: 42, borderRadius: 8 },
+  header: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, backgroundColor: '#f0fdf4', borderBottomWidth: 1, borderBottomColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center', gap: 8 },
   brand: { color: '#052e16', fontWeight: '900', fontSize: 18 },
   subtitle: { color: '#166534', marginTop: 2, fontSize: 12 },
-  siteButton: { flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: '#86efac', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8 },
+  siteButton: { flexDirection: 'row', gap: 5, alignItems: 'center', backgroundColor: '#86efac', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
   siteText: { color: '#052e16', fontWeight: '800' },
-  tabs: { maxHeight: 66, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  tabs: { maxHeight: 60, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
   tabsContent: { paddingHorizontal: 8 },
-  tab: { width: 92, alignItems: 'center', paddingVertical: 10, gap: 3, borderRadius: 8 },
+  tab: { minWidth: 86, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8 },
   tabActive: { backgroundColor: '#dcfce7' },
-  tabText: { color: '#475569', fontSize: 11, fontWeight: '700' },
+  tabText: { color: '#475569', fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   tabTextActive: { color: '#052e16' },
   content: { padding: 14, gap: 12, paddingBottom: 40 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
