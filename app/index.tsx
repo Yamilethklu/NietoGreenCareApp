@@ -1,3 +1,4 @@
+import { CustomerHistory } from '../components/CustomerHistory';
 import { Ionicons } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
@@ -29,8 +30,8 @@ type Role = 'admin' | 'worker' | null;
 type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
 
 const demoHouses: House[] = [
-  { id: 'h1', client: 'Maria Lopez', address: '1208 Blue Ridge Dr, Georgetown, TX', phone: '512-555-0121', email: 'maria@example.com', frequency: 'Cada 15 dias', service: 'Yarda completa', price: 65, active: true, notes: 'Tiene mascotas. Avisar antes de entrar.' },
-  { id: 'h2', client: 'Carlos Rivera', address: '741 Oak Meadow Ln, Leander, TX', phone: '512-555-0178', email: 'carlos@example.com', frequency: 'Cada 8 dias', service: 'Frente y atras', price: 55, active: true, notes: 'Porton con codigo.' },
+  { id: 'h1', client: 'Maria Lopez', address: '1208 Blue Ridge Dr, Georgetown, TX', phone: '512-555-0121', email: 'maria@example.com', frequency: 'Cada 14 dias', service: 'Yarda completa', price: 65, active: true, notes: 'Tiene mascotas. Avisar antes de entrar.' },
+  { id: 'h2', client: 'Carlos Rivera', address: '741 Oak Meadow Ln, Leander, TX', phone: '512-555-0178', email: 'carlos@example.com', frequency: 'Cada 7 dias', service: 'Frente y atras', price: 55, active: true, notes: 'Porton con codigo.' },
 ];
 const demoOrders: Order[] = [
   { id: 'o1', houseId: 'h1', date: today, service: 'Corte de yarda', price: 65, status: 'SOLICITADO', paid: false, paidAmount: 0, workerId: 'w1' },
@@ -133,8 +134,12 @@ export default function HomeScreen() {
     if (galleryRows.data) setGallery(galleryRows.data.map((row: any) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
     setReviews(((reviewRow.data?.value as { items?: any[] } | null)?.items ?? []).map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', rating: Number(row.rating ?? 5), text: row.comment ?? '', visible: Boolean(row.approved ?? true) })));
     if (workerRows.data) setWorkers(workerRows.data.map((row: any) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
-    if (orderRows.data) setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? today).slice(0, 10), service: 'Corte de yarda', price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
-    if (invoiceRows.data) setInvoices(invoiceRows.data.map((row: any) => { const order = (orderRows.data ?? []).find((item: any) => item.id === row.order_id); return { id: row.id, houseId: order?.lead_id ?? '', createdAt: String(row.issued_at ?? row.created_at ?? today).slice(0, 10), orderIds: [row.order_id], number: row.invoice_number, total: Number(row.total ?? 0), paid: Number(order?.paid_amount ?? 0) >= Number(row.total ?? 0), sentAt: row.sent_at }; }));
+    if (orderRows.data) setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? today).slice(0, 10), service: (leadData.find((lead:any)=>lead.id===row.lead_id)?.selected_services??['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
+    if (invoiceRows.data) {
+      const groups=new Map<string,any[]>();
+      for(const row of invoiceRows.data){const key=String(row.invoice_number).startsWith('NGC-G-')?String(row.invoice_number).split('/')[0]:row.invoice_number;groups.set(key,[...(groups.get(key)??[]),row]);}
+      setInvoices(Array.from(groups.entries()).map(([key,rows])=>{const row=rows[0];const first=(orderRows.data??[]).find((order:any)=>order.id===row.order_id);return {id:row.id,houseId:first?.lead_id??'',createdAt:String(row.issued_at??today).slice(0,10),orderIds:rows.map(item=>item.order_id),number:key,total:rows.reduce((sum,item)=>sum+Number(item.total),0),paid:rows.every(item=>Number((orderRows.data??[]).find((order:any)=>order.id===item.order_id)?.paid_amount??0)>=Number(item.total)),sentAt:rows.find(item=>item.sent_at)?.sent_at};}));
+    }
     if (sectionRows.data) setSections(sectionRows.data.map((row: any) => ({ id: row.id, section: row.section ?? row.key ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? row.content ?? '', visible: Boolean(row.visible ?? true) })));
     if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row: any) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     await ensureCurrentWeeklySummary(orderRows.data ?? []);
@@ -165,7 +170,7 @@ export default function HomeScreen() {
       const lead = isUuid ? await supabase.from('leads').update(payload).eq('id', house.id).select().single() : await supabase.from('leads').insert({ ...payload, reference_code: `APP-${Date.now()}`, source: 'mobile_app', selected_services: [house.service || 'lawn_service'], service_count: 1, area_sq_ft: 0, area_sq_yd: 0, estimated_cubic_yards: 0 }).select().single();
       const leadId = lead.data?.id ?? house.id;
       if (!house.planId) {
-        const cadence = house.frequency === 'Cada 8 dias' ? 'weekly' : house.frequency === 'Una vez' ? 'one_time' : 'bi_weekly';
+        const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Una vez' ? 'one_time' : 'bi_weekly';
         const plan = await supabase.from('service_plans').insert({ lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null }).select().single();
         if (plan.data?.id) await supabase.from('work_orders').insert({ plan_id: plan.data.id, lead_id: leadId, crew_member_id: null, service_date: selectedDate, start_time: '08:00', duration_minutes: 60, status: 'scheduled', price: house.price, notes: house.notes || null });
       }
@@ -174,12 +179,21 @@ export default function HomeScreen() {
     setEditingHouse(null);
   }
   function createInvoice(houseId: string) {
-    const pending = orders.filter((order) => order.houseId === houseId && !order.paid && !order.invoiceId);
-    pending.forEach((order) => { if (supabase && session) void supabase.from('work_invoices').upsert({ order_id: order.id, invoice_number: `NGC-${new Date().getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`, total: order.price, customer_email: getHouse(order.houseId)?.email || null }, { onConflict: 'order_id' }); });
-    if (pending.length) void loadData();
+    setTab('clientes');
+    setMessage('Busque al cliente y seleccione las fechas para generar una sola factura.');
   }
-  function registerPayment() {
+
+  async function registerPayment() {
     if (!paymentTarget) return;
+    if(paymentTarget.type === 'invoice'){
+      if(!session)return;
+      try{
+        const response=await fetch(`${SITE_URL}/api/admin/operations/invoices`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({action:'pay',invoice_id:paymentTarget.id,payment_method:dbPay(paymentMethod)})});
+        const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'No se pudo registrar el pago');
+        await loadData();setPaymentTarget(null);setPaymentNote('');setMessage('Pago guardado en el sitio y la app.');
+      }catch(error){setMessage(error instanceof Error?error.message:'No se pudo registrar el pago');}
+      return;
+    }
     const orderIds = paymentTarget.type === 'order' ? [paymentTarget.id] : invoices.find((item) => item.id === paymentTarget.id)?.orderIds ?? [];
     orderIds.forEach((id) => { const order = orders.find((item) => item.id === id); void saveRow('work_orders', id, { paid_amount: order?.price ?? 0, payment_method: dbPay(paymentMethod), paid_at: new Date().toISOString(), notes: paymentNote || order?.notes || null }); });
     setOrders((current) => current.map((order) => orderIds.includes(order.id) ? { ...order, paid: true, paidAmount: order.price } : order));
@@ -247,7 +261,7 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => void Linking.openURL(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
-        {tab === 'clientes' && <><SectionTitle title="Clientes" />{customers.map((c) => <Card key={c.id} title={c.name} meta={`${c.phone} - Solicitudes: ${c.requests} - Trabajos: ${c.completed}`}><Text style={styles.total}>Total pagado: ${c.paidTotal.toFixed(2)}</Text></Card>)}</>}
+        {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
         {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(today)} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => { setTab('casas'); setEditingHouse(getHouse(order.houseId) ?? null); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
         {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
         {tab === 'invoices' && <><SectionTitle title="Invoices" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['document-attach-outline', '#eab308', () => void Linking.openURL(`${SITE_URL}/api/admin/operations/invoice-file?id=${encodeURIComponent(invoice.id)}`)], ['trash-outline', '#dc2626', () => { setInvoices((current) => current.filter((item) => item.id !== invoice.id)); void deleteRow('work_invoices', invoice.id); }]]} /></Card>)}</>}
@@ -264,13 +278,13 @@ export default function HomeScreen() {
   );
 }
 
-function emptyHouse(): House { return { id: `h${Date.now()}`, client: '', address: '', phone: '', email: '', frequency: 'Cada 15 dias', service: 'Corte de yarda', price: 0, active: true, notes: '' }; }
+function emptyHouse(): House { return { id: `h${Date.now()}`, client: '', address: '', phone: '', email: '', frequency: 'Cada 14 dias', service: 'Corte de yarda', price: 0, active: true, notes: '' }; }
 function mapOrderStatus(status?: string): Status { if (status === 'completed' || status === 'FINALIZADA') return 'FINALIZADA'; if (status === 'cancelled' || status === 'CANCELADA') return 'CANCELADA'; return 'SOLICITADO'; }
 function dbOrderStatus(status: Status) { return status === 'FINALIZADA' ? 'completed' : status === 'CANCELADA' ? 'cancelled' : 'scheduled'; }
 function mapLeadStatus(status?: string): LeadStatus { if (status === 'scheduled') return 'scheduled'; if (status === 'completed') return 'completed'; if (status === 'cancelled') return 'cancelled'; return 'pending'; }
 function leadLabel(status: LeadStatus) { return status === 'scheduled' ? 'PROGRAMADO' : status === 'completed' ? 'COMPLETADO' : status === 'cancelled' ? 'CANCELADO' : 'PENDIENTE'; }
 function dbPay(method: PayMethod) { return method === 'CashApp' ? 'cash_app' : method.toLowerCase(); }
-function mapCadence(cadence?: string) { return cadence === 'weekly' ? 'Cada 8 dias' : cadence === 'one_time' ? 'Una vez' : 'Cada 15 dias'; }
+function mapCadence(cadence?: string) { return cadence === 'weekly' ? 'Cada 7 dias' : cadence === 'one_time' ? 'Una vez' : 'Cada 14 dias'; }
 function weekRange(date = new Date()) {
   const startDate = new Date(date);
   const day = startDate.getDay();

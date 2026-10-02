@@ -1,0 +1,30 @@
+import { useState } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
+import type { Session } from '@supabase/supabase-js';
+
+type House={id:string;client:string;phone:string;email:string;address:string;service:string};
+type Order={id:string;houseId:string;date:string;status:string;price:number;paidAmount:number;invoiceId?:string;notes?:string};
+type Invoice={id:string;houseId:string;orderIds:string[];total:number;paid:boolean;sentAt?:string|null};
+const phone=(value:string)=>value.replace(/\D/g,'').slice(-10);
+const button={backgroundColor:'#15803d',padding:12,borderRadius:8,marginTop:8} as const;
+const field={borderWidth:1,borderColor:'#cbd5e1',padding:10,borderRadius:8,backgroundColor:'#ffffff',color:'#111827',marginTop:8} as const;
+
+export function CustomerHistory({houses,orders,invoices,session,reload}:{houses:House[];orders:Order[];invoices:Invoice[];session:Session|null;reload:()=>Promise<void>}){
+ const [search,setSearch]=useState(''),[customer,setCustomer]=useState('');
+ const [selected,setSelected]=useState<Record<string,string>>({}),[method,setMethod]=useState('cash');
+ const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+ const customers=Array.from(new Map(houses.map(house=>[phone(house.phone)||house.id,house])).entries());
+ const related=houses.filter(house=>(phone(house.phone)||house.id)===customer),ids=new Set(related.map(house=>house.id));
+ const history=orders.filter(order=>ids.has(order.houseId)).sort((a,b)=>b.date.localeCompare(a.date));
+ const request=async(path:string,body:unknown)=>{if(!session)return;setBusy(true);setMessage('');try{const response=await fetch(`https://nietogreecare-site.vercel.app/api/admin/operations/${path}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify(body)});const data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'No se pudo guardar');setSelected({});await reload();setMessage('Guardado en el sitio y la app.');}catch(error){setMessage(error instanceof Error?error.message:'Error');}finally{setBusy(false);}};
+ return <View><Text style={{fontSize:20,fontWeight:'700'}}>Historial y cobro por cliente</Text><TextInput style={field} placeholder="Buscar por nombre" value={search} onChangeText={setSearch}/>
+  {customers.filter(([,house])=>house.client.toLowerCase().includes(search.toLowerCase())).map(([key,house])=><Pressable key={key} style={button} onPress={()=>{setCustomer(key);setSelected({});}}><Text style={{color:'#fff'}}>{house.client} · {house.phone}</Text></Pressable>)}
+  {customer&&<>{related.map(house=><View key={house.id} style={{marginTop:12}}><Text>{house.client} · {house.address}</Text><Text>{house.phone} · {house.email}</Text><Text>{house.service}</Text></View>)}
+   {history.map(order=>{const eligible=order.status==='FINALIZADA'&&order.paidAmount<order.price&&!order.invoiceId;return <View key={order.id} style={{borderBottomWidth:1,borderColor:'#e2e8f0',paddingVertical:12}}><Pressable disabled={!eligible||busy} onPress={()=>setSelected(current=>{const next={...current};if(order.id in next)delete next[order.id];else next[order.id]=String(order.price);return next;})}><Text>{eligible?(order.id in selected?'☑ ':'☐ '):''}{order.date} · {order.status}</Text><Text>Precio ${order.price.toFixed(2)} · Pagado ${order.paidAmount.toFixed(2)}</Text></Pressable>{order.notes&&<Text>{order.notes}</Text>}{order.id in selected&&<TextInput accessibilityLabel={`Precio ${order.date}`} keyboardType="decimal-pad" style={field} value={selected[order.id]} onChangeText={value=>setSelected({...selected,[order.id]:value})}/>}</View>;})}
+   <Text style={{marginTop:12}}>Total: ${Object.values(selected).reduce((sum,value)=>sum+Number(value||0),0).toFixed(2)}</Text>
+   <Pressable style={button} disabled={busy||!Object.keys(selected).length||Object.values(selected).some(value=>!value.trim()||!Number.isFinite(Number(value)))} onPress={()=>void request('invoice-group',{items:Object.entries(selected).map(([orderId,value])=>({orderId,price:Number(value)}))})}><Text style={{color:'#fff'}}>Generar factura de fechas seleccionadas</Text></Pressable>
+   <Text style={{marginTop:12}}>Método de pago</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{[['cash','Efectivo'],['cash_app','Cash App'],['venmo','Venmo'],['zelle','Zelle'],['check','Cheque'],['other','Otro']].map(([key,label])=><Pressable key={key} style={[field,{backgroundColor:method===key?'#bbf7d0':'#fff'}]} onPress={()=>setMethod(key)}><Text>{label}</Text></Pressable>)}</View>
+   {invoices.filter(invoice=>ids.has(invoice.houseId)).map(invoice=><View key={invoice.id} style={field}><Text>{invoice.orderIds.map(id=>orders.find(order=>order.id===id)?.date).join(' · ')}</Text><Text>${invoice.total.toFixed(2)} · {invoice.paid?'Pagada':'Pendiente'}</Text><Pressable style={button} disabled={busy||Boolean(invoice.sentAt)} onPress={()=>void request('invoices',{action:'send',invoice_id:invoice.id})}><Text style={{color:'#fff'}}>Enviar factura al cliente</Text></Pressable><Pressable style={button} disabled={busy||invoice.paid} onPress={()=>void request('invoices',{action:'pay',invoice_id:invoice.id,payment_method:method})}><Text style={{color:'#fff'}}>Registrar pago conjunto</Text></Pressable></View>)}
+  </>}{message&&<Text accessibilityLiveRegion="polite" style={{marginTop:12}}>{message}</Text>}
+ </View>;
+}
