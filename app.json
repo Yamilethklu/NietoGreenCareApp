@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nieto Green Care",
     "slug": "nieto-green-care",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "nietogreencare",
@@ -12,6 +12,7 @@
       "backgroundColor": "#dcfce7"
     },
     "plugins": [
+      "expo-secure-store",
       "expo-router",
       [
         "expo-image-picker",

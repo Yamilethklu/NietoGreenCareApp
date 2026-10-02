@@ -1,16 +1,13 @@
 import { CustomerHistory } from '../components/CustomerHistory';
 import { Ionicons } from '@expo/vector-icons';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, finishGoogleSignIn, signInWithGoogle } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const SITE_URL = 'https://nietogreecare-site.vercel.app';
 const APP_LOGO = require('../assets/icon.png');
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 const today = new Date().toISOString().slice(0, 10);
 
 type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
@@ -51,6 +48,8 @@ export default function HomeScreen() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role>(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [message, setMessage] = useState(supabase ? 'Inicia sesion para vincular con el panel web' : 'Faltan variables de Supabase');
@@ -74,12 +73,34 @@ export default function HomeScreen() {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setAuthorized(false);
       setSession(nextSession);
-      if (nextSession) void loadData();
     });
-    return () => data.subscription.unsubscribe();
+    void Linking.getInitialURL().then(async url => { if (url) await finishGoogleSignIn(url); }).catch(() => setMessage('No se pudo completar el acceso. Intenta de nuevo.'));
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active') supabase?.auth.startAutoRefresh(); else supabase?.auth.stopAutoRefresh();
+    });
+    supabase.auth.startAutoRefresh();
+    return () => { data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
   }, []);
-  useEffect(() => { if (session) void loadData(); }, [session]);
+  useEffect(() => {
+    let active = true;
+    setAuthorized(false);
+    if (!session || !role || !supabase) return;
+    setMessage('Verificando acceso...');
+    void (async () => {
+      const result = role === 'admin'
+        ? await supabase!.rpc('is_admin')
+        : await supabase!.from('crew_members').select('id').eq('active', true).ilike('email', session.user.email ?? '').limit(1);
+      if (!active) return;
+      const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
+      setAuthorized(allowed);
+      if (allowed) setTab(role === 'worker' ? 'agenda' : 'dashboard');
+      else setMessage(result.error ? 'No se pudo verificar tu acceso. Intenta de nuevo.' : 'Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
+    })().catch(() => active && setMessage('No se pudo verificar tu acceso. Revisa tu conexión.'));
+    return () => { active = false; };
+  }, [session, role]);
+  useEffect(() => { if (session && authorized) void loadData(); }, [session, authorized]);
 
   const visibleOrders = useMemo(() => orders.filter((order) => order.date === selectedDate && (role !== 'worker' || workerMatches(order, session?.user.email))).sort((a, b) => a.id.localeCompare(b.id)), [orders, selectedDate, role, session]);
   const filteredInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50), [invoiceFilter, invoices]);
@@ -105,13 +126,23 @@ export default function HomeScreen() {
   function getHouse(id: string) { return houses.find((house) => house.id === id); }
   async function signIn() {
     if (!supabase) return setMessage('Configura EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY');
-    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
-    setMessage(error ? `No se pudo iniciar sesion: ${error.message}` : 'Sesion activa. Sincronizando panel web...');
+    setAuthBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+      setMessage(error ? 'Correo o contraseña incorrectos. Si usas Google en el sitio, pulsa Continuar con Google.' : 'Verificando acceso...');
+    } catch { setMessage('No se pudo conectar. Revisa tu conexión e intenta de nuevo.'); }
+    finally { setAuthBusy(false); }
+  }
+  async function googleSignIn() {
+    setAuthBusy(true);
+    try { if (!(await signInWithGoogle())) setMessage('Inicio con Google cancelado. Puedes intentarlo de nuevo.'); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión con Google.'); }
+    finally { setAuthBusy(false); }
   }
   async function signOut() { if (supabase) await supabase.auth.signOut(); setSession(null); setMessage('Sesion cerrada'); }
 
   async function loadData() {
-    if (!supabase || !session) return;
+    if (!supabase || !session || !authorized) return;
     const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
       supabase.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('pricing_rules').select('*').order('min_sq_ft').limit(100),
@@ -242,13 +273,14 @@ export default function HomeScreen() {
     </View></SafeAreaView>
   );
 
-  if (!session) return (
+  if (!session || !authorized) return (
     <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
       <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" /><Text style={styles.sectionTitle}>{role === 'worker' ? 'Acceso trabajador' : 'Acceso administrador'}</Text>
-      <Text style={styles.notes}>Entra con el correo autorizado en Supabase para vincular app y sitio.</Text>
+      <Text style={styles.notes}>Usa la misma cuenta de Google del sitio o tu correo y contraseña. El correo debe estar autorizado para este panel.</Text>
+      <Pressable style={styles.primaryButton} disabled={authBusy} onPress={() => void googleSignIn()}><Text style={styles.primaryText}>{authBusy ? 'Conectando...' : 'Continuar con Google'}</Text></Pressable>
       <Field label="Correo" value={authEmail} onChangeText={setAuthEmail} />
-      <Field label="Contrasena" value={authPassword} onChangeText={setAuthPassword} secureTextEntry />
-      <Pressable style={styles.primaryButton} onPress={() => void signIn()}><Text style={styles.primaryText}>Entrar y sincronizar</Text></Pressable>
+      <Field label="Contraseña" value={authPassword} onChangeText={setAuthPassword} secureTextEntry />
+      <Pressable style={styles.primaryButton} disabled={authBusy} onPress={() => void signIn()}><Text style={styles.primaryText}>Entrar y sincronizar</Text></Pressable>
       <Pressable style={styles.smallButton} onPress={() => setRole(null)}><Text style={styles.smallButtonText}>Cambiar acceso</Text></Pressable>
       <Text style={styles.cardMeta}>{message}</Text>
     </View></SafeAreaView>
@@ -257,7 +289,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View><MiniButton icon="globe-outline" label="Sitio" onPress={() => void Linking.openURL(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{(['dashboard', 'solicitudes', 'clientes', 'agenda', 'casas', 'invoices', 'trabajadores', 'precios', 'galeria', 'opiniones', 'qr', 'editor'] as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={item} onPress={() => setTab(item)} />)}</ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{((role === 'worker' ? ['agenda'] : ['dashboard', 'solicitudes', 'clientes', 'agenda', 'casas', 'invoices', 'trabajadores', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={item} onPress={() => setTab(item)} />)}</ScrollView>
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => void Linking.openURL(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
