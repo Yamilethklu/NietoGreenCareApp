@@ -150,7 +150,7 @@ export default function HomeScreen() {
       const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
       item.requests += 1;
       if (lead.status === 'completed') item.completed += 1;
-      item.paidTotal = lead.phone ? paidByPhone.get(lead.phone) ?? 0 : 0;
+      item.paidTotal = lead.phone ? paidByPhone.get(lead.phone) ?? 0 : paidByHouse.get(lead.id) ?? 0;
       map.set(key, item);
     });
     houses.forEach((house) => {
@@ -271,8 +271,8 @@ export default function HomeScreen() {
     }
     if (sectionRows.data) setSections(sectionRows.data.map((row) => ({ id: row.id, section: row.section ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? '', visible: Boolean(row.visible ?? true) })));
     if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
-    await ensureCurrentWeeklySummary(orderRows.data ?? []);
-    setMessage('Datos sincronizados con el panel web');
+    const summarySaved = await ensureCurrentWeeklySummary(orderRows.data ?? []);
+    setMessage(summarySaved ? 'Datos sincronizados con el panel web' : 'Datos sincronizados, pero no se pudo guardar el resumen semanal.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la agenda. Revisa tu conexión.'); }
     finally {
       loadingRef.current = false;
@@ -357,23 +357,28 @@ export default function HomeScreen() {
     const worker = workers.find((item) => item.id === order.workerId);
     return worker?.email.toLowerCase() === email.toLowerCase();
   }
-  async function ensureCurrentWeeklySummary(rows: OrderRow[]) {
-    if (!supabase || !session || role === 'worker') return;
+  async function ensureCurrentWeeklySummary(rows: OrderRow[]): Promise<boolean> {
+    if (!supabase || !session || role === 'worker') return true;
     const { start, end } = weekRange();
     const summary = buildWeeklySummary(rows, start, end);
-    const { error } = await supabase.from('weekly_summaries').upsert({
-      week_start: start,
-      week_end: end,
-      completed_orders: summary.completed,
-      cancelled_orders: summary.cancelled,
-      unpaid_orders: summary.unpaid,
-      paid_orders: summary.paid,
-      total_collected: summary.total,
-      notes: summary.notes,
-      generated_at: new Date().toISOString(),
-    }, { onConflict: 'week_start' });
-    if (error) throw new Error(`No se pudo guardar el resumen semanal: ${error.message}`);
-    setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
+    try {
+      const { error } = await supabase.from('weekly_summaries').upsert({
+        week_start: start,
+        week_end: end,
+        completed_orders: summary.completed,
+        cancelled_orders: summary.cancelled,
+        unpaid_orders: summary.unpaid,
+        paid_orders: summary.paid,
+        total_collected: summary.total,
+        notes: summary.notes,
+        generated_at: new Date().toISOString(),
+      }, { onConflict: 'week_start' });
+      if (error) throw new Error(error.message);
+      setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   if (!role) return (
@@ -407,7 +412,7 @@ export default function HomeScreen() {
         <Pressable style={styles.smallButton} onPress={() => void enableNotifications()}><Text style={styles.smallButtonText}>Activar recordatorio diario</Text></Pressable>
         {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
-        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
+        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => { void updateLeadStatus(lead.id, 'scheduled'); }], ['checkmark-done-outline', '#0f766e', () => { void updateLeadStatus(lead.id, 'completed'); }], ['ban-outline', '#6b7280', () => { void updateLeadStatus(lead.id, 'cancelled'); }], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
         {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} workerOnly={role === 'worker'} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => setTab('clientes')} workers={workers.filter(w => w.active)} onAssign={async workerId => { if(await updateOrder(order.id,{crew_member_id:workerId})) await loadData(); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
         {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
