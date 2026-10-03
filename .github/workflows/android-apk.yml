@@ -3,6 +3,7 @@ name: Android APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['.github/workflows/ios-build.yml', '.github/workflows/expo-status.yml']
   workflow_dispatch:
 
 permissions:
