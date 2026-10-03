@@ -31,11 +31,12 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - name: Check required configuration
         run: |
-          if [ -z "$EXPO_TOKEN" ] || [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
+          if [ -z "$EXPO_TOKEN" ] || [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || { [ -z "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ] && [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; }; then
             echo '::error::Missing EXPO_TOKEN or existing public Supabase configuration.'
             exit 1
           fi
@@ -49,6 +50,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
       - run: npm run typecheck
+      - run: node --test tests/auth.test.cjs
       - name: Pass existing public app configuration to remote build
         run: |
           node <<'NODE'
@@ -59,7 +61,8 @@ jobs:
           config.build[profile].env = {
             ...config.build[profile].env,
             EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
-            EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+            EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+            EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
           };
           fs.writeFileSync('eas.json', JSON.stringify(config, null, 2));
           NODE

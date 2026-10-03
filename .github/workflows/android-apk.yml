@@ -36,6 +36,8 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      - run: node --test tests/auth.test.cjs
       - name: Build installable APK
         run: bash ./gradlew :app:assembleRelease --no-daemon
         working-directory: android
@@ -43,6 +45,7 @@ jobs:
           CI: '1'
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       - name: Publish workflow artifact
         uses: actions/upload-artifact@v4
         with:

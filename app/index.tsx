@@ -3,7 +3,7 @@ import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase, finishGoogleSignIn, signInWithGoogle } from '../services/auth';
+import { supabase, finishGoogleSignIn, signInWithGoogle, rememberAccessRole, restoreAccessRole } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -75,20 +75,31 @@ export default function HomeScreen() {
     if (!supabase) return;
     let active = true;
     let authEventReceived = false;
+    void restoreAccessRole().then(saved => {
+      if (active && saved) setRole(current => current ?? saved);
+    }).catch(() => { /* The user can still select a panel if storage is unavailable. */ });
     supabase.auth.getSession()
       .then(({ data }) => { if (active && !authEventReceived) setSession(data.session); })
       .catch(() => { if (active) setMessage('No se pudo recuperar la sesión. Inicia sesión de nuevo.'); });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       authEventReceived = true;
-      setAuthorized(false);
+      if (!active) return;
+      if (!nextSession) setAuthorized(false);
       setSession(nextSession);
     });
-    void Linking.getInitialURL().then(async url => { if (url) await finishGoogleSignIn(url); }).catch(() => { if (active) setMessage('No se pudo completar el acceso. Intenta de nuevo.'); });
+    const handleCallback = async (url: string) => {
+      try { await finishGoogleSignIn(url); }
+      catch (error) { if (active) setMessage(error instanceof Error ? error.message : 'No se pudo completar el acceso. Intenta de nuevo.'); }
+    };
+    const callbackListener = Linking.addEventListener('url', event => { void handleCallback(event.url); });
+    void Linking.getInitialURL().then(url => { if (url) void handleCallback(url); }).catch(() => {
+      if (active) setMessage('No se pudo completar el acceso. Intenta de nuevo.');
+    });
     const listener = AppState.addEventListener('change', state => {
       if (state === 'active') supabase?.auth.startAutoRefresh(); else supabase?.auth.stopAutoRefresh();
     });
     supabase.auth.startAutoRefresh();
-    return () => { active = false; data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
+    return () => { active = false; callbackListener.remove(); data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
   }, []);
   useEffect(() => {
     let active = true;
@@ -189,9 +200,10 @@ export default function HomeScreen() {
 
   function getHouse(id: string) { return houses.find((house) => house.id === id); }
   async function signIn() {
-    if (!supabase) return setMessage('Configura EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY');
+    if (!supabase) return setMessage('Falta la URL o la clave pública de Supabase en esta versión de la app.');
     setAuthBusy(true);
     try {
+      if (role) await rememberAccessRole(role);
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       setMessage(error ? 'Correo o contraseña incorrectos. Si usas Google en el sitio, pulsa Continuar con Google.' : 'Verificando acceso...');
     } catch { setMessage('No se pudo conectar. Revisa tu conexión e intenta de nuevo.'); }
@@ -199,7 +211,7 @@ export default function HomeScreen() {
   }
   async function googleSignIn() {
     setAuthBusy(true);
-    try { if (!(await signInWithGoogle())) setMessage('Inicio con Google cancelado. Puedes intentarlo de nuevo.'); }
+    try { if (role && !(await signInWithGoogle(role))) setMessage('Inicio con Google cancelado. Puedes intentarlo de nuevo.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión con Google.'); }
     finally { setAuthBusy(false); }
   }
