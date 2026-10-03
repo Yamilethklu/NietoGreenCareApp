@@ -27,6 +27,15 @@ type Review = { id: string; customer: string; rating: number; text: string; visi
 type Section = { id: string; section: string; title: string; body: string; visible: boolean };
 type Role = 'admin' | 'worker' | null;
 type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
+type LeadRow = { id: string; customer_name: string | null; customer_phone: string | null; customer_email: string | null; address: string | null; reference_code: string | null; selected_services: string[] | null; area_sq_ft: number | null; details: string | null; additional_notes: string | null; gate_code: string | null; status: string | null; final_price: number | null; city: string | null; zip_code: string | null; created_at: string };
+type PricingRow = { id: string; name: string | null; min_sq_ft: number | null; max_sq_ft: number | null; price: number | null };
+type GalleryRow = { id: string; title: string | null; description: string | null; public_url: string | null; is_published: boolean | null; created_at: string };
+type WorkerRow = { id: string; full_name: string | null; email: string | null; active: boolean | null; phone: string | null };
+type PlanRow = { id: string; lead_id: string; cadence: string | null; active: boolean | null; price_per_visit: number | null; notes: string | null; created_at: string };
+type OrderRow = { id: string; lead_id: string | null; service_date: string | null; status: string | null; price: number | null; paid_amount: number | null; payment_method: string | null; crew_member_id: string | null; notes: string | null };
+type InvoiceRow = { id: string; order_id: string; invoice_number: string; issued_at: string | null; total: number | null; sent_at: string | null; created_at: string };
+type WeeklySummaryRow = { id: string; week_start: string; week_end: string; completed_orders: number | null; cancelled_orders: number | null; unpaid_orders: number | null; paid_orders: number | null; total_collected: number | null; notes: string | null };
+type SectionRow = { id: string; section: string | null; title: string | null; body: string | null; visible: boolean | null };
 
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -204,46 +213,46 @@ export default function HomeScreen() {
       const response = await fetch(`${SITE_URL}/api/crew/orders?date=${encodeURIComponent(selectedDate)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'No se pudo cargar la agenda');
-      const member = payload.data.member;
-      const rows = payload.data.orders ?? [];
-      setWorkers([{ id: member.id, name: member.full_name, email: member.email, active: true }]);
-      setHouses(rows.map((row: any) => ({ id: row.lead_id, client: row.leads?.customer_name ?? 'Cliente', address: row.leads?.address ?? '', phone: row.leads?.customer_phone ?? '', email: '', frequency: '', service: 'Corte de césped', price: Number(row.price), active: true, notes: row.leads?.additional_notes ?? '' })));
-      setOrders(rows.map((row: any) => ({ id: row.id, houseId: row.lead_id, date: row.service_date, service: 'Corte de césped', price: Number(row.price), paidAmount: Number(row.paid_amount), paid: Number(row.paid_amount) >= Number(row.price), paymentMethod: row.payment_method, status: mapOrderStatus(row.status), workerId: member.id, notes: row.notes ?? '' })));
+      const member = payload.data.member as WorkerRow;
+      const rows = (payload.data.orders ?? []) as (OrderRow & { leads?: Pick<LeadRow, 'customer_name' | 'address' | 'customer_phone' | 'additional_notes'> | null })[];
+      setWorkers([{ id: member.id, name: member.full_name ?? 'Trabajador', email: member.email ?? '', active: true }]);
+      setHouses(rows.map((row) => ({ id: row.lead_id ?? '', client: row.leads?.customer_name ?? 'Cliente', address: row.leads?.address ?? '', phone: row.leads?.customer_phone ?? '', email: '', frequency: '', service: 'Corte de césped', price: Number(row.price), active: true, notes: row.leads?.additional_notes ?? '' })));
+      setOrders(rows.map((row) => ({ id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()), service: 'Corte de césped', price: Number(row.price), paidAmount: Number(row.paid_amount), paid: Number(row.paid_amount) >= Number(row.price), paymentMethod: row.payment_method ?? undefined, status: mapOrderStatus(row.status ?? undefined), workerId: member.id, notes: row.notes ?? undefined })));
       setMessage('Agenda sincronizada con el dueño.');
       return;
     }
-    async function readAll(table: string, column: string, columns: string, ascending = false) {
-      const rows: any[] = [];
+    async function readAll<T>(table: string, column: string, columns: string, ascending = false) {
+      const rows: T[] = [];
       for (let offset = 0; ; offset += 500) {
         const { data, error } = await supabase!.from(table).select(columns).order(column, { ascending }).order('id').range(offset, offset + 499);
         if (error) return { data: null, error };
-        rows.push(...(data ?? []));
+        rows.push(...((data ?? []) as unknown as T[]));
         if ((data?.length ?? 0) < 500) return { data: rows, error: null };
       }
     }
     const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
-      readAll('leads', 'created_at', 'id,customer_name,customer_phone,customer_email,address,reference_code,selected_services,area_sq_ft,details,additional_notes,gate_code,status,final_price,city,zip_code,created_at', false),
-      readAll('pricing_rules', 'min_sq_ft', 'id,name,min_sq_ft,max_sq_ft,price', true),
-      readAll('gallery', 'created_at', 'id,title,description,public_url,is_published,created_at', false),
+      readAll<LeadRow>('leads', 'created_at', 'id,customer_name,customer_phone,customer_email,address,reference_code,selected_services,area_sq_ft,details,additional_notes,gate_code,status,final_price,city,zip_code,created_at', false),
+      readAll<PricingRow>('pricing_rules', 'min_sq_ft', 'id,name,min_sq_ft,max_sq_ft,price', true),
+      readAll<GalleryRow>('gallery', 'created_at', 'id,title,description,public_url,is_published,created_at', false),
       supabase.from('app_settings').select('value').eq('key', 'customer_reviews').maybeSingle(),
-      readAll('crew_members', 'full_name', 'id,full_name,email,active,phone', true),
-      readAll('service_plans', 'created_at', 'id,lead_id,cadence,active,price_per_visit,notes,created_at', false),
-      readAll('work_orders', 'service_date', 'id,lead_id,service_date,status,price,paid_amount,payment_method,crew_member_id,notes', false),
-      readAll('work_invoices', 'created_at', 'id,order_id,invoice_number,issued_at,total,sent_at,created_at', false),
-      supabase.from('site_sections').select('id,section,title,body,visible').order('section').limit(100),
-      readAll('weekly_summaries', 'week_start', 'id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes', false),
+      readAll<WorkerRow>('crew_members', 'full_name', 'id,full_name,email,active,phone', true),
+      readAll<PlanRow>('service_plans', 'created_at', 'id,lead_id,cadence,active,price_per_visit,notes,created_at', false),
+      readAll<OrderRow>('work_orders', 'service_date', 'id,lead_id,service_date,status,price,paid_amount,payment_method,crew_member_id,notes', false),
+      readAll<InvoiceRow>('work_invoices', 'created_at', 'id,order_id,invoice_number,issued_at,total,sent_at,created_at', false),
+      supabase.from('site_sections').select('id,section,title,body,visible').returns<SectionRow[]>().order('section').limit(100),
+      readAll<WeeklySummaryRow>('weekly_summaries', 'week_start', 'id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes', false),
     ]);
     const loadError = [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
     const leadData = leadRows.data ?? [];
-    const planByLead = new Map<string, any>();
+    const planByLead = new Map<string, PlanRow>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
-    const ordersById = new Map((orderRows.data ?? []).map((row: any) => [String(row.id), row]));
-    const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row: any) => [String(row.order_id), row]));
-    setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0) })));
-    setHouses(leadData.map((row: any) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
-    if (priceRows.data) setPrices(priceRows.data.map((row: any) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
-    if (galleryRows.data) setGallery(galleryRows.data.map((row: any) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
+    const ordersById = new Map((orderRows.data ?? []).map((row) => [String(row.id), row]));
+    const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row) => [String(row.order_id), row]));
+    setLeads(leadData.map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status ?? undefined), finalPrice: Number(row.final_price ?? 0) })));
+    setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
+    if (priceRows.data) setPrices(priceRows.data.map((row) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
+    if (galleryRows.data) setGallery(galleryRows.data.map((row) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
     const reviewSettings: unknown = reviewRow.data?.value;
     const reviewItems = isRecord(reviewSettings) && Array.isArray(reviewSettings.items) ? reviewSettings.items.filter(isRecord) : [];
     setReviews(reviewItems.map((row) => ({
@@ -253,15 +262,15 @@ export default function HomeScreen() {
       text: String(row.comment ?? ''),
       visible: Boolean(row.approved ?? true),
     })));
-    if (workerRows.data) setWorkers(workerRows.data.map((row: any) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
-    if (orderRows.data)     setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead:any)=>lead.id===row.lead_id)?.selected_services??['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
+    if (workerRows.data) setWorkers(workerRows.data.map((row) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
+    if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
     if (invoiceRows.data) {
-      const groups=new Map<string,any[]>();
+      const groups=new Map<string,InvoiceRow[]>();
       for(const row of invoiceRows.data){const key=String(row.invoice_number).startsWith('NGC-G-')?String(row.invoice_number).split('/')[0]:row.invoice_number;groups.set(key,[...(groups.get(key)??[]),row]);}
       setInvoices(Array.from(groups.entries()).map(([key,rows])=>{const row=rows[0];const first=ordersById.get(String(row.order_id));return {id:row.id,houseId:first?.lead_id??'',createdAt:String(row.issued_at??texasDate()).slice(0,10),orderIds:rows.map(item=>item.order_id),number:key,total:rows.reduce((sum,item)=>sum+Number(item.total),0),paid:rows.every(item=>Number(ordersById.get(String(item.order_id))?.paid_amount??0)>=Number(item.total)),sentAt:rows.find(item=>item.sent_at)?.sent_at};}));
     }
-    if (sectionRows.data) setSections(sectionRows.data.map((row: any) => ({ id: row.id, section: row.section ?? row.key ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? row.content ?? '', visible: Boolean(row.visible ?? true) })));
-    if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row: any) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
+    if (sectionRows.data) setSections(sectionRows.data.map((row) => ({ id: row.id, section: row.section ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? '', visible: Boolean(row.visible ?? true) })));
+    if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     await ensureCurrentWeeklySummary(orderRows.data ?? []);
     setMessage('Datos sincronizados con el panel web');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la agenda. Revisa tu conexión.'); }
@@ -348,7 +357,7 @@ export default function HomeScreen() {
     const worker = workers.find((item) => item.id === order.workerId);
     return worker?.email.toLowerCase() === email.toLowerCase();
   }
-  async function ensureCurrentWeeklySummary(rows: any[]) {
+  async function ensureCurrentWeeklySummary(rows: OrderRow[]) {
     if (!supabase || !session || role === 'worker') return;
     const { start, end } = weekRange();
     const summary = buildWeeklySummary(rows, start, end);
@@ -435,7 +444,7 @@ function weekRange(date = texasDate()) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-function buildWeeklySummary(rows: any[], start: string, end: string): WeeklySummary {
+function buildWeeklySummary(rows: OrderRow[], start: string, end: string): WeeklySummary {
   const weekRows = rows.filter((row) => String(row.service_date ?? '').slice(0, 10) >= start && String(row.service_date ?? '').slice(0, 10) <= end);
   const completed = weekRows.filter((row) => row.status === 'completed').length;
   const cancelled = weekRows.filter((row) => row.status === 'cancelled').length;
