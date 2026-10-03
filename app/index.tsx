@@ -44,8 +44,6 @@ export default function HomeScreen() {
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const loadingRef = useRef(false);
   const reloadRequestedRef = useRef(false);
-  const selectedDateRef = useRef(selectedDate);
-  selectedDateRef.current = selectedDate;
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role>(null);
   const [authorized, setAuthorized] = useState(false);
@@ -112,12 +110,12 @@ export default function HomeScreen() {
     if (!session || !authorized) return;
     const refresh = () => {
       const day = texasDate();
-      if (day !== dayRef.current) { dayRef.current = day; selectedDateRef.current = day; setSelectedDate(day); }
+      if (day !== dayRef.current) { dayRef.current = day; setSelectedDate(day); }
       if (AppState.currentState === 'active') void refreshRef.current();
     };
     const timer = setInterval(refresh, 60000);
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
-    const notification = onAgendaNotification(() => { const day = texasDate(); dayRef.current = day; selectedDateRef.current = day; setSelectedDate(day); setTab('agenda'); refresh(); });
+    const notification = onAgendaNotification(() => { const day = texasDate(); dayRef.current = day; setSelectedDate(day); setTab('agenda'); refresh(); });
     return () => { clearInterval(timer); foreground.remove(); notification.remove(); };
   }, [session?.user.id, authorized]);
 
@@ -143,18 +141,21 @@ export default function HomeScreen() {
     }
     const paidByPhone = new Map<string, number>();
     for (const house of houses) {
-      if (house.phone) paidByPhone.set(house.phone, (paidByPhone.get(house.phone) ?? 0) + (paidByHouse.get(house.id) ?? 0));
+      const phone = normalizePhone(house.phone);
+      if (phone) paidByPhone.set(phone, (paidByPhone.get(phone) ?? 0) + (paidByHouse.get(house.id) ?? 0));
     }
     leads.forEach((lead) => {
-      const key = lead.phone || lead.id;
+      const phone = normalizePhone(lead.phone);
+      const key = phone || lead.id;
       const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
       item.requests += 1;
       if (lead.status === 'completed') item.completed += 1;
-      item.paidTotal = lead.phone ? paidByPhone.get(lead.phone) ?? 0 : paidByHouse.get(lead.id) ?? 0;
+      item.paidTotal = phone ? paidByPhone.get(phone) ?? 0 : paidByHouse.get(lead.id) ?? 0;
       map.set(key, item);
     });
     houses.forEach((house) => {
-      const key = house.phone || house.id;
+      const phone = normalizePhone(house.phone);
+      const key = phone || house.id;
       if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByHouse.get(house.id) ?? 0 });
     });
     return [...map.values()];
@@ -242,8 +243,9 @@ export default function HomeScreen() {
       supabase.from('site_sections').select('id,section,title,body,visible').returns<SectionRow[]>().order('section').limit(100),
       supabase.from('weekly_summaries').select('id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes').returns<WeeklySummaryRow[]>().order('week_start', { ascending: false }).limit(6),
     ]);
-    const loadError = [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows].find(result => result.error)?.error;
+    const loadError = [leadRows, workerRows, planRows, orderRows, invoiceRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
+    const auxiliaryLoadError = [priceRows, galleryRows, reviewRow, sectionRows, weeklyRows].some(result => result.error);
     const leadData = leadRows.data ?? [];
     const planByLead = new Map<string, PlanRow>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
@@ -253,15 +255,17 @@ export default function HomeScreen() {
     setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
     if (priceRows.data) setPrices(priceRows.data.map((row) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
     if (galleryRows.data) setGallery(galleryRows.data.map((row) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
-    const reviewSettings: unknown = reviewRow.data?.value;
-    const reviewItems = isRecord(reviewSettings) && Array.isArray(reviewSettings.items) ? reviewSettings.items.filter(isRecord) : [];
-    setReviews(reviewItems.map((row) => ({
-      id: String(row.id ?? ''),
-      customer: String(row.customer_name ?? 'Cliente'),
-      rating: Number(row.rating ?? 5),
-      text: String(row.comment ?? ''),
-      visible: Boolean(row.approved ?? true),
-    })));
+    if (!reviewRow.error) {
+      const reviewSettings: unknown = reviewRow.data?.value;
+      const reviewItems = isRecord(reviewSettings) && Array.isArray(reviewSettings.items) ? reviewSettings.items.filter(isRecord) : [];
+      setReviews(reviewItems.map((row) => ({
+        id: String(row.id ?? ''),
+        customer: String(row.customer_name ?? 'Cliente'),
+        rating: Number(row.rating ?? 5),
+        text: String(row.comment ?? ''),
+        visible: Boolean(row.approved ?? true),
+      })));
+    }
     if (workerRows.data) setWorkers(workerRows.data.map((row) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
     if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
     if (invoiceRows.data) {
@@ -272,7 +276,7 @@ export default function HomeScreen() {
     if (sectionRows.data) setSections(sectionRows.data.map((row) => ({ id: row.id, section: row.section ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? '', visible: Boolean(row.visible ?? true) })));
     if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     const summarySaved = await ensureCurrentWeeklySummary(orderRows.data ?? []);
-    setMessage(summarySaved ? 'Datos sincronizados con el panel web' : 'Datos sincronizados, pero no se pudo guardar el resumen semanal.');
+    setMessage(auxiliaryLoadError || !summarySaved ? 'Datos sincronizados, pero algunas secciones no se pudieron actualizar.' : 'Datos sincronizados con el panel web');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la agenda. Revisa tu conexión.'); }
     finally {
       loadingRef.current = false;
@@ -449,6 +453,7 @@ function weekRange(date = texasDate()) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
 function buildWeeklySummary(rows: OrderRow[], start: string, end: string): WeeklySummary {
   const weekRows = rows.filter((row) => String(row.service_date ?? '').slice(0, 10) >= start && String(row.service_date ?? '').slice(0, 10) <= end);
   const completed = weekRows.filter((row) => row.status === 'completed').length;
