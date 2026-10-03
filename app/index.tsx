@@ -11,7 +11,6 @@ import { AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, S
 
 const SITE_URL = 'https://nietogreecare-site.vercel.app';
 const APP_LOGO = require('../assets/icon.png');
-const today = texasDate();
 
 type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
 type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled';
@@ -35,6 +34,9 @@ export default function HomeScreen() {
   const dayRef = useRef(texasDate());
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const loadingRef = useRef(false);
+  const reloadRequestedRef = useRef(false);
+  const selectedDateRef = useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role>(null);
   const [authorized, setAuthorized] = useState(false);
@@ -60,17 +62,22 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    let active = true;
+    let authEventReceived = false;
+    supabase.auth.getSession()
+      .then(({ data }) => { if (active && !authEventReceived) setSession(data.session); })
+      .catch(() => { if (active) setMessage('No se pudo recuperar la sesión. Inicia sesión de nuevo.'); });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      authEventReceived = true;
       setAuthorized(false);
       setSession(nextSession);
     });
-    void Linking.getInitialURL().then(async url => { if (url) await finishGoogleSignIn(url); }).catch(() => setMessage('No se pudo completar el acceso. Intenta de nuevo.'));
+    void Linking.getInitialURL().then(async url => { if (url) await finishGoogleSignIn(url); }).catch(() => { if (active) setMessage('No se pudo completar el acceso. Intenta de nuevo.'); });
     const listener = AppState.addEventListener('change', state => {
       if (state === 'active') supabase?.auth.startAutoRefresh(); else supabase?.auth.stopAutoRefresh();
     });
     supabase.auth.startAutoRefresh();
-    return () => { data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
+    return () => { active = false; data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
   }, []);
   useEffect(() => {
     let active = true;
@@ -96,12 +103,12 @@ export default function HomeScreen() {
     if (!session || !authorized) return;
     const refresh = () => {
       const day = texasDate();
-      if (day !== dayRef.current) { dayRef.current = day; setSelectedDate(day); }
+      if (day !== dayRef.current) { dayRef.current = day; selectedDateRef.current = day; setSelectedDate(day); }
       if (AppState.currentState === 'active') void refreshRef.current();
     };
     const timer = setInterval(refresh, 60000);
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
-    const notification = onAgendaNotification(() => { setSelectedDate(texasDate()); setTab('agenda'); refresh(); });
+    const notification = onAgendaNotification(() => { const day = texasDate(); dayRef.current = day; selectedDateRef.current = day; setSelectedDate(day); setTab('agenda'); refresh(); });
     return () => { clearInterval(timer); foreground.remove(); notification.remove(); };
   }, [session?.user.id, authorized]);
 
@@ -109,19 +116,38 @@ export default function HomeScreen() {
     try { setMessage(await enableDailyReminder() ? 'Recordatorio diario activado a las 6:00 a. m. del teléfono.' : 'Activa las notificaciones en los ajustes del teléfono para recibir el recordatorio.'); }
     catch { setMessage('No se pudo activar el recordatorio. Revisa los permisos del teléfono.'); }
   }
+  function openExternalUrl(url: string) {
+    void Linking.openURL(url).catch(() => setMessage('No se pudo abrir el enlace.'));
+  }
 
   const visibleOrders = useMemo(() => orders.filter((order) => order.date === selectedDate && (role !== 'worker' || workerMatches(order, session?.user.email))).sort((a, b) => a.id.localeCompare(b.id)), [orders, selectedDate, role, session]);
   const filteredInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50), [invoiceFilter, invoices]);
   const customers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; phone: string; requests: number; completed: number; paidTotal: number }>();
+    const paidByHouse = new Map<string, number>();
+    const completedByHouse = new Map<string, number>();
+    for (const invoice of invoices) {
+      if (invoice.paid) paidByHouse.set(invoice.houseId, (paidByHouse.get(invoice.houseId) ?? 0) + invoice.total);
+    }
+    for (const order of orders) {
+      if (order.status === 'FINALIZADA') completedByHouse.set(order.houseId, (completedByHouse.get(order.houseId) ?? 0) + 1);
+    }
+    const paidByPhone = new Map<string, number>();
+    for (const house of houses) {
+      if (house.phone) paidByPhone.set(house.phone, (paidByPhone.get(house.phone) ?? 0) + (paidByHouse.get(house.id) ?? 0));
+    }
     leads.forEach((lead) => {
-      const item = map.get(lead.phone) ?? { id: lead.phone, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
+      const key = lead.phone || lead.id;
+      const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
       item.requests += 1;
       if (lead.status === 'completed') item.completed += 1;
-      item.paidTotal += invoices.filter((invoice) => getHouse(invoice.houseId)?.phone === lead.phone && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0);
-      map.set(lead.phone, item);
+      item.paidTotal = lead.phone ? paidByPhone.get(lead.phone) ?? 0 : 0;
+      map.set(key, item);
     });
-    houses.forEach((house) => map.set(house.phone, map.get(house.phone) ?? { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: orders.filter((order) => order.houseId === house.id && order.status === 'FINALIZADA').length, paidTotal: invoices.filter((invoice) => invoice.houseId === house.id && invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0) }));
+    houses.forEach((house) => {
+      const key = house.phone || house.id;
+      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByHouse.get(house.id) ?? 0 });
+    });
     return [...map.values()];
   }, [houses, invoices, leads, orders]);
   const metrics = {
@@ -147,11 +173,31 @@ export default function HomeScreen() {
     catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión con Google.'); }
     finally { setAuthBusy(false); }
   }
-  async function signOut() { await disableDailyReminder().catch(() => {}); if (supabase) await supabase.auth.signOut(); setAuthorized(false); setSession(null); setMessage('Sesion cerrada'); }
+  async function signOut() {
+    try {
+      await disableDailyReminder();
+    } catch {
+      setMessage('No se pudo desactivar el recordatorio. Se cerrará la sesión de todos modos.');
+    }
+    try {
+      if (supabase) {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
+      setAuthorized(false);
+      setSession(null);
+      setMessage('Sesion cerrada');
+    } catch {
+      setMessage('No se pudo cerrar la sesión. Intenta de nuevo.');
+    }
+  }
 
   async function loadData() {
     if (!supabase || !session || !authorized) return;
-    if (loadingRef.current) return;
+    if (loadingRef.current) {
+      reloadRequestedRef.current = true;
+      return;
+    }
     loadingRef.current = true;
     try {
     if (role === 'worker') {
@@ -166,57 +212,72 @@ export default function HomeScreen() {
       setMessage('Agenda sincronizada con el dueño.');
       return;
     }
-    async function readAll(table: string, column: string, ascending = false) {
+    async function readAll(table: string, column: string, columns: string, ascending = false) {
       const rows: any[] = [];
       for (let offset = 0; ; offset += 500) {
-        const { data, error } = await supabase!.from(table).select('*').order(column, { ascending }).order('id').range(offset, offset + 499);
+        const { data, error } = await supabase!.from(table).select(columns).order(column, { ascending }).order('id').range(offset, offset + 499);
         if (error) return { data: null, error };
         rows.push(...(data ?? []));
         if ((data?.length ?? 0) < 500) return { data: rows, error: null };
       }
     }
     const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
-      readAll('leads', 'created_at', false),
-      readAll('pricing_rules', 'min_sq_ft', true),
-      readAll('gallery', 'created_at', false),
+      readAll('leads', 'created_at', 'id,customer_name,customer_phone,customer_email,address,reference_code,selected_services,area_sq_ft,details,additional_notes,gate_code,status,final_price,city,zip_code,created_at', false),
+      readAll('pricing_rules', 'min_sq_ft', 'id,name,min_sq_ft,max_sq_ft,price', true),
+      readAll('gallery', 'created_at', 'id,title,description,public_url,is_published,created_at', false),
       supabase.from('app_settings').select('value').eq('key', 'customer_reviews').maybeSingle(),
-      readAll('crew_members', 'full_name', true),
-      readAll('service_plans', 'created_at', false),
-      readAll('work_orders', 'service_date', false),
-      readAll('work_invoices', 'created_at', false),
-      supabase.from('site_sections').select('*').order('section').limit(100),
-      readAll('weekly_summaries', 'week_start', false),
+      readAll('crew_members', 'full_name', 'id,full_name,email,active,phone', true),
+      readAll('service_plans', 'created_at', 'id,lead_id,cadence,active,price_per_visit,notes,created_at', false),
+      readAll('work_orders', 'service_date', 'id,lead_id,service_date,status,price,paid_amount,payment_method,crew_member_id,notes', false),
+      readAll('work_invoices', 'created_at', 'id,order_id,invoice_number,issued_at,total,sent_at,created_at', false),
+      supabase.from('site_sections').select('id,section,title,body,visible').order('section').limit(100),
+      readAll('weekly_summaries', 'week_start', 'id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes', false),
     ]);
-    const loadError = [leadRows, workerRows, planRows, orderRows, invoiceRows].find(result => result.error)?.error;
+    const loadError = [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
     const leadData = leadRows.data ?? [];
     const planByLead = new Map<string, any>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
+    const ordersById = new Map((orderRows.data ?? []).map((row: any) => [String(row.id), row]));
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row: any) => [String(row.order_id), row]));
     setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0) })));
     setHouses(leadData.map((row: any) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
     if (priceRows.data) setPrices(priceRows.data.map((row: any) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
     if (galleryRows.data) setGallery(galleryRows.data.map((row: any) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
-    setReviews(((reviewRow.data?.value as { items?: any[] } | null)?.items ?? []).map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', rating: Number(row.rating ?? 5), text: row.comment ?? '', visible: Boolean(row.approved ?? true) })));
+    const reviewSettings: unknown = reviewRow.data?.value;
+    const reviewItems = isRecord(reviewSettings) && Array.isArray(reviewSettings.items) ? reviewSettings.items.filter(isRecord) : [];
+    setReviews(reviewItems.map((row) => ({
+      id: String(row.id ?? ''),
+      customer: String(row.customer_name ?? 'Cliente'),
+      rating: Number(row.rating ?? 5),
+      text: String(row.comment ?? ''),
+      visible: Boolean(row.approved ?? true),
+    })));
     if (workerRows.data) setWorkers(workerRows.data.map((row: any) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
-    if (orderRows.data) setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? today).slice(0, 10), service: (leadData.find((lead:any)=>lead.id===row.lead_id)?.selected_services??['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
+    if (orderRows.data)     setOrders(orderRows.data.map((row: any) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead:any)=>lead.id===row.lead_id)?.selected_services??['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
     if (invoiceRows.data) {
       const groups=new Map<string,any[]>();
       for(const row of invoiceRows.data){const key=String(row.invoice_number).startsWith('NGC-G-')?String(row.invoice_number).split('/')[0]:row.invoice_number;groups.set(key,[...(groups.get(key)??[]),row]);}
-      setInvoices(Array.from(groups.entries()).map(([key,rows])=>{const row=rows[0];const first=(orderRows.data??[]).find((order:any)=>order.id===row.order_id);return {id:row.id,houseId:first?.lead_id??'',createdAt:String(row.issued_at??today).slice(0,10),orderIds:rows.map(item=>item.order_id),number:key,total:rows.reduce((sum,item)=>sum+Number(item.total),0),paid:rows.every(item=>Number((orderRows.data??[]).find((order:any)=>order.id===item.order_id)?.paid_amount??0)>=Number(item.total)),sentAt:rows.find(item=>item.sent_at)?.sent_at};}));
+      setInvoices(Array.from(groups.entries()).map(([key,rows])=>{const row=rows[0];const first=ordersById.get(String(row.order_id));return {id:row.id,houseId:first?.lead_id??'',createdAt:String(row.issued_at??texasDate()).slice(0,10),orderIds:rows.map(item=>item.order_id),number:key,total:rows.reduce((sum,item)=>sum+Number(item.total),0),paid:rows.every(item=>Number(ordersById.get(String(item.order_id))?.paid_amount??0)>=Number(item.total)),sentAt:rows.find(item=>item.sent_at)?.sent_at};}));
     }
     if (sectionRows.data) setSections(sectionRows.data.map((row: any) => ({ id: row.id, section: row.section ?? row.key ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? row.content ?? '', visible: Boolean(row.visible ?? true) })));
     if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row: any) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     await ensureCurrentWeeklySummary(orderRows.data ?? []);
     setMessage('Datos sincronizados con el panel web');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la agenda. Revisa tu conexión.'); }
-    finally { loadingRef.current = false; }
+    finally {
+      loadingRef.current = false;
+      if (reloadRequestedRef.current) {
+        reloadRequestedRef.current = false;
+        void refreshRef.current();
+      }
+    }
   }
 
   async function saveRow(table: string, id: string, values: Record<string, unknown>) {
     if (!supabase || !session) return;
     const { error } = await supabase.from(table).update(values).eq('id', id);
-    if (error) setMessage(`Pendiente de guardar en ${table}: ${error.message}`);
+    if (error) throw new Error(`No se pudo guardar en ${table}: ${error.message}`);
   }
   async function deleteRow(table: string, id: string) {
     if (!supabase || !session) return;
@@ -235,9 +296,24 @@ export default function HomeScreen() {
       return true;
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo guardar el cambio'); return false; }
   }
-  function updateLeadStatus(id: string, status: LeadStatus) { setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead)); void saveRow('leads', id, { status }); }
+  async function updateLeadStatus(id: string, status: LeadStatus) {
+    try {
+      await saveRow('leads', id, { status });
+      setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la solicitud.');
+    }
+  }
   function deleteOrder(id: string) { void updateStatus(id, 'CANCELADA'); }
-  function deleteHouse(id: string) { setHouses((current) => current.filter((house) => house.id !== id)); setOrders((current) => current.filter((order) => order.houseId !== id)); void saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() }); }
+  async function deleteHouse(id: string) {
+    try {
+      await saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() });
+      setHouses((current) => current.filter((house) => house.id !== id));
+      setOrders((current) => current.filter((order) => order.houseId !== id));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la casa.');
+    }
+  }
   async function saveHouse(house: House) {
     try {
       const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Una vez' ? 'one_time' : null;
@@ -287,7 +363,8 @@ export default function HomeScreen() {
       notes: summary.notes,
       generated_at: new Date().toISOString(),
     }, { onConflict: 'week_start' });
-    if (!error) setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
+    if (error) throw new Error(`No se pudo guardar el resumen semanal: ${error.message}`);
+    setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
   }
 
   if (!role) return (
@@ -315,13 +392,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View><MiniButton icon="globe-outline" label="Sitio" onPress={() => void Linking.openURL(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
+      <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View><MiniButton icon="globe-outline" label="Sitio" onPress={() => openExternalUrl(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{((role === 'worker' ? ['agenda'] : ['dashboard', 'solicitudes', 'clientes', 'agenda', 'casas', 'invoices', 'trabajadores', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={item} onPress={() => setTab(item)} />)}</ScrollView>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.smallButton} onPress={() => void enableNotifications()}><Text style={styles.smallButtonText}>Activar recordatorio diario</Text></Pressable>
         {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
-        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => void Linking.openURL(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
+        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => updateLeadStatus(lead.id, 'scheduled')], ['checkmark-done-outline', '#0f766e', () => updateLeadStatus(lead.id, 'completed')], ['ban-outline', '#6b7280', () => updateLeadStatus(lead.id, 'cancelled')], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
         {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} workerOnly={role === 'worker'} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => setTab('clientes')} workers={workers.filter(w => w.active)} onAssign={async workerId => { if(await updateOrder(order.id,{crew_member_id:workerId})) await loadData(); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
         {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
@@ -330,8 +407,8 @@ export default function HomeScreen() {
         {tab === 'precios' && <AdminManagement key="precios" mode="precios" onChanged={loadData} />}
         {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
         {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
-        {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => void Linking.openURL(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
-        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); void saveRow('site_sections', section.id, { body }); }} /></Card>)}</>}
+        {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
+        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); void saveRow('site_sections', section.id, { body }).catch(error => setMessage(error instanceof Error ? error.message : 'No se pudo guardar el contenido.')); }} /></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
@@ -346,14 +423,17 @@ function mapLeadStatus(status?: string): LeadStatus { if (status === 'scheduled'
 function leadLabel(status: LeadStatus) { return status === 'scheduled' ? 'PROGRAMADO' : status === 'completed' ? 'COMPLETADO' : status === 'cancelled' ? 'CANCELADO' : 'PENDIENTE'; }
 function dbPay(method: PayMethod) { return method === 'CashApp' ? 'cash_app' : method.toLowerCase(); }
 function mapCadence(cadence?: string) { return cadence === 'weekly' ? 'Cada 7 dias' : cadence === 'one_time' ? 'Una vez' : 'Cada 14 dias'; }
-function weekRange(date = new Date()) {
-  const startDate = new Date(date);
-  const day = startDate.getDay();
+function weekRange(date = texasDate()) {
+  const startDate = new Date(`${date}T00:00:00Z`);
+  const day = startDate.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  startDate.setDate(startDate.getDate() + diff);
+  startDate.setUTCDate(startDate.getUTCDate() + diff);
   const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6);
+  endDate.setUTCDate(startDate.getUTCDate() + 6);
   return { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) };
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 function buildWeeklySummary(rows: any[], start: string, end: string): WeeklySummary {
   const weekRows = rows.filter((row) => String(row.service_date ?? '').slice(0, 10) >= start && String(row.service_date ?? '').slice(0, 10) <= end);
@@ -395,7 +475,7 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
   return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 14 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
 function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
-  return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {today}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {texasDate()}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
 }
 function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean }) {
   return <View><Text style={styles.label}>{props.label}</Text><TextInput {...props} style={[styles.input, props.multiline && styles.textarea]} placeholder={props.label} /></View>;
