@@ -240,7 +240,7 @@ export default function HomeScreen() {
       readAll<OrderRow>('work_orders', 'service_date', 'id,lead_id,service_date,status,price,paid_amount,payment_method,crew_member_id,notes', false),
       readAll<InvoiceRow>('work_invoices', 'created_at', 'id,order_id,invoice_number,issued_at,total,sent_at,created_at', false),
       supabase.from('site_sections').select('id,section,title,body,visible').returns<SectionRow[]>().order('section').limit(100),
-      readAll<WeeklySummaryRow>('weekly_summaries', 'week_start', 'id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes', false),
+      supabase.from('weekly_summaries').select('id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes').returns<WeeklySummaryRow[]>().order('week_start', { ascending: false }).limit(6),
     ]);
     const loadError = [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
