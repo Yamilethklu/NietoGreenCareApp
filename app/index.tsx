@@ -131,10 +131,10 @@ export default function HomeScreen() {
   const filteredInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50), [invoiceFilter, invoices]);
   const customers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; phone: string; requests: number; completed: number; paidTotal: number }>();
-    const paidByHouse = new Map<string, number>();
+    const paidByLead = new Map<string, number>();
     const completedByHouse = new Map<string, number>();
     for (const invoice of invoices) {
-      if (invoice.paid) paidByHouse.set(invoice.houseId, (paidByHouse.get(invoice.houseId) ?? 0) + invoice.total);
+      if (invoice.paid) paidByLead.set(invoice.houseId, (paidByLead.get(invoice.houseId) ?? 0) + invoice.total);
     }
     for (const order of orders) {
       if (order.status === 'FINALIZADA') completedByHouse.set(order.houseId, (completedByHouse.get(order.houseId) ?? 0) + 1);
@@ -142,7 +142,7 @@ export default function HomeScreen() {
     const paidByPhone = new Map<string, number>();
     for (const house of houses) {
       const phone = normalizePhone(house.phone);
-      if (phone) paidByPhone.set(phone, (paidByPhone.get(phone) ?? 0) + (paidByHouse.get(house.id) ?? 0));
+      if (phone) paidByPhone.set(phone, (paidByPhone.get(phone) ?? 0) + (paidByLead.get(house.id) ?? 0));
     }
     leads.forEach((lead) => {
       const phone = normalizePhone(lead.phone);
@@ -150,13 +150,13 @@ export default function HomeScreen() {
       const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
       item.requests += 1;
       if (lead.status === 'completed') item.completed += 1;
-      item.paidTotal = phone ? paidByPhone.get(phone) ?? 0 : paidByHouse.get(lead.id) ?? 0;
+      item.paidTotal = phone ? paidByPhone.get(phone) ?? 0 : paidByLead.get(lead.id) ?? 0;
       map.set(key, item);
     });
     houses.forEach((house) => {
       const phone = normalizePhone(house.phone);
       const key = phone || house.id;
-      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByHouse.get(house.id) ?? 0 });
+      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByLead.get(house.id) ?? 0 });
     });
     return [...map.values()];
   }, [houses, invoices, leads, orders]);
@@ -377,10 +377,14 @@ export default function HomeScreen() {
         notes: summary.notes,
         generated_at: new Date().toISOString(),
       }, { onConflict: 'week_start' });
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.warn('No se pudo guardar el resumen semanal.', error);
+        return false;
+      }
       setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
       return true;
-    } catch {
+    } catch (error) {
+      console.warn('No se pudo guardar el resumen semanal.', error);
       return false;
     }
   }
@@ -426,7 +430,7 @@ export default function HomeScreen() {
         {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
         {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
         {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
-        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); void saveRow('site_sections', section.id, { body }).catch(error => setMessage(error instanceof Error ? error.message : 'No se pudo guardar el contenido.')); }} /></Card>)}</>}
+        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item))} /><Pressable style={styles.smallButton} onPress={() => void saveRow('site_sections', section.id, { body: section.body }).then(() => setMessage('Contenido guardado.')).catch(error => setMessage(error instanceof Error ? error.message : 'No se pudo guardar el contenido.'))}><Text style={styles.smallButtonText}>Guardar contenido</Text></Pressable></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
