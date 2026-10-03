@@ -1,3 +1,5 @@
+import { AdminManagement } from '../components/AdminManagement';
+import { shareInvoice } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,23 +29,6 @@ type Section = { id: string; section: string; title: string; body: string; visib
 type Role = 'admin' | 'worker' | null;
 type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
 
-const demoHouses: House[] = [
-  { id: 'h1', client: 'Maria Lopez', address: '1208 Blue Ridge Dr, Georgetown, TX', phone: '512-555-0121', email: 'maria@example.com', frequency: 'Cada 14 dias', service: 'Yarda completa', price: 65, active: true, notes: 'Tiene mascotas. Avisar antes de entrar.' },
-  { id: 'h2', client: 'Carlos Rivera', address: '741 Oak Meadow Ln, Leander, TX', phone: '512-555-0178', email: 'carlos@example.com', frequency: 'Cada 7 dias', service: 'Frente y atras', price: 55, active: true, notes: 'Porton con codigo.' },
-];
-const demoOrders: Order[] = [
-  { id: 'o1', houseId: 'h1', date: today, service: 'Corte de yarda', price: 65, status: 'SOLICITADO', paid: false, paidAmount: 0, workerId: 'w1' },
-  { id: 'o2', houseId: 'h2', date: today, service: 'Corte semanal', price: 55, status: 'SOLICITADO', paid: false, paidAmount: 0, workerId: 'w2' },
-];
-const demoWorkers: Worker[] = [{ id: 'w1', name: 'Luis Nieto', email: 'luis@nietogreencare.com', active: true }, { id: 'w2', name: 'Trabajador Demo', email: 'worker@nietogreencare.com', active: true }];
-const demoLeads: Lead[] = [
-  { id: 'l1', customer: 'Ana Martinez', phone: '512-555-0199', email: 'ana@example.com', address: '212 Cedar Park Dr, Cedar Park, TX', reference: 'NGC-1024', services: 'Corte de cesped', areaSqFt: 4820, details: 'Frente y atras, quincenal', gateCode: '4421', status: 'pending', finalPrice: 65 },
-];
-const demoPrices: Price[] = [{ id: 'p1', name: 'Semanal chico', minArea: 0, maxArea: 4800, price: 30 }, { id: 'p2', name: 'Quincenal medio', minArea: 3800, maxArea: 4800, price: 40 }];
-const demoGallery: Gallery[] = [{ id: 'g1', title: 'Antes y despues - Georgetown', type: 'foto', visible: true }];
-const demoReviews: Review[] = [{ id: 'r1', customer: 'Maria Lopez', rating: 5, text: 'Muy buen trabajo y puntualidad.', visible: true }];
-const demoSections: Section[] = [{ id: 's1', section: 'Marca', title: 'Nieto Green Care', body: 'Lawn care profesional en Central Texas.', visible: true }];
-
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [selectedDate, setSelectedDate] = useState(texasDate);
@@ -57,14 +42,14 @@ export default function HomeScreen() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [message, setMessage] = useState(supabase ? 'Inicia sesion para vincular con el panel web' : 'Faltan variables de Supabase');
-  const [leads, setLeads] = useState(demoLeads);
-  const [houses, setHouses] = useState(demoHouses);
-  const [orders, setOrders] = useState(demoOrders);
-  const [workers, setWorkers] = useState(demoWorkers);
-  const [prices, setPrices] = useState(demoPrices);
-  const [gallery, setGallery] = useState(demoGallery);
-  const [reviews, setReviews] = useState(demoReviews);
-  const [sections, setSections] = useState(demoSections);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [houses, setHouses] = useState<House[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [prices, setPrices] = useState<Price[]>([]);
+  const [gallery, setGallery] = useState<Gallery[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
@@ -278,15 +263,6 @@ export default function HomeScreen() {
     await loadData();
     setPaymentTarget(null); setPaymentNote('');
   }
-  function addWorker() { if (supabase && session) void supabase.from('crew_members').insert({ full_name: 'Nuevo trabajador', email: 'nuevo@nietogreencare.com', active: true }).then(() => loadData()); }
-  function toggleWorker(id: string) { const worker = workers.find((item) => item.id === id); setWorkers((current) => current.map((item) => item.id === id ? { ...item, active: !item.active } : item)); void saveRow('crew_members', id, { active: !worker?.active }); }
-  function updatePrice(id: string, price: number) { setPrices((current) => current.map((item) => item.id === id ? { ...item, price } : item)); void saveRow('pricing_rules', id, { price }); }
-  function toggleGallery(id: string) { const item = gallery.find((entry) => entry.id === id); setGallery((current) => current.map((entry) => entry.id === id ? { ...entry, visible: !entry.visible } : entry)); void saveRow('gallery', id, { is_published: !item?.visible }); }
-  function toggleReview(id: string) {
-    const next = reviews.map((entry) => entry.id === id ? { ...entry, visible: !entry.visible } : entry);
-    setReviews(next);
-    if (supabase && session) void supabase.from('app_settings').upsert({ key: 'customer_reviews', value: { items: next.map((review) => ({ id: review.id, customer_name: review.customer, city: '', rating: review.rating, comment: review.text, approved: review.visible, created_at: new Date().toISOString() })) }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-  }
   function workerMatches(order: Order, email?: string | null) {
     if (!email) return false;
     const worker = workers.find((item) => item.id === order.workerId);
@@ -345,11 +321,11 @@ export default function HomeScreen() {
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
         {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} workerOnly={role === 'worker'} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => { setTab('casas'); setEditingHouse(getHouse(order.houseId) ?? null); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
         {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
-        {tab === 'invoices' && <><SectionTitle title="Invoices" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['document-attach-outline', '#eab308', () => void Linking.openURL(`${SITE_URL}/api/admin/operations/invoice-file?id=${encodeURIComponent(invoice.id)}`)], ['trash-outline', '#dc2626', () => { setInvoices((current) => current.filter((item) => item.id !== invoice.id)); void deleteRow('work_invoices', invoice.id); }]]} /></Card>)}</>}
-        {tab === 'trabajadores' && <><SectionTitle title="Trabajadores" action="Agregar" onPress={addWorker} />{workers.map((worker) => <Card key={worker.id} title={worker.name} meta={`${worker.email} - ${worker.active ? 'Activo' : 'Desactivado'}`}><Text style={styles.notes}>Lista del dia: {orders.filter((order) => order.workerId === worker.id && order.date === selectedDate).length} trabajos asignados.</Text><Actions items={[[worker.active ? 'lock-closed-outline' : 'lock-open-outline', worker.active ? '#6b7280' : '#16a34a', () => toggleWorker(worker.id)]]} /></Card>)}</>}
-        {tab === 'precios' && <><SectionTitle title="Precios de cesped" />{prices.map((price) => <Card key={price.id} title={price.name} meta={`${price.minArea.toLocaleString()} - ${price.maxArea.toLocaleString()} ft²`}><Field label="Precio" value={String(price.price)} keyboardType="numeric" onChangeText={(value) => updatePrice(price.id, Number(value) || 0)} /></Card>)}</>}
-        {tab === 'galeria' && <><SectionTitle title="Galeria" />{gallery.map((item) => <Card key={item.id} title={item.title} meta={item.type.toUpperCase()} status={item.visible ? 'PUBLICO' : 'OCULTO'} tone={item.visible ? 'green' : 'gray'}><Actions items={[[item.visible ? 'eye-off-outline' : 'eye-outline', '#2563eb', () => toggleGallery(item.id)], ['trash-outline', '#dc2626', () => setGallery((current) => current.filter((entry) => entry.id !== item.id))]]} /></Card>)}</>}
-        {tab === 'opiniones' && <><SectionTitle title="Opiniones" />{reviews.map((review) => <Card key={review.id} title={review.customer} meta={'★'.repeat(review.rating)} status={review.visible ? 'PUBLICA' : 'OCULTA'} tone={review.visible ? 'green' : 'gray'}><Text style={styles.notes}>{review.text}</Text><Actions items={[[review.visible ? 'eye-off-outline' : 'eye-outline', '#2563eb', () => toggleReview(review.id)], ['trash-outline', '#dc2626', () => setReviews((current) => current.filter((entry) => entry.id !== review.id))]]} /></Card>)}</>}
+        {tab === 'invoices' && <><SectionTitle title="Invoices" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => { setInvoices((current) => current.filter((item) => item.id !== invoice.id)); void deleteRow('work_invoices', invoice.id); }]]} /></Card>)}</>}
+        {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
+        {tab === 'precios' && <AdminManagement key="precios" mode="precios" onChanged={loadData} />}
+        {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
+        {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
         {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => void Linking.openURL(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
         {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); void saveRow('site_sections', section.id, { body }); }} /></Card>)}</>}
       </ScrollView>

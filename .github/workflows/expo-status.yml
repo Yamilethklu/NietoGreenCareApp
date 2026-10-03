@@ -1,0 +1,31 @@
+name: Inspect iPhone build status
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/expo-status.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Read latest iPhone builds without exposing credentials
+        run: |
+          eas build:list --platform ios --limit 5 --json --non-interactive > /tmp/ios-builds.json
+          node <<'NODE'
+          const builds = JSON.parse(require('fs').readFileSync('/tmp/ios-builds.json','utf8'));
+          for (const b of builds) console.log(JSON.stringify({id:b.id,status:b.status,distribution:b.distribution,appVersion:b.appVersion,appBuildVersion:b.appBuildVersion,createdAt:b.createdAt}));
+          if (!builds.length) console.log('No iPhone builds found in EAS.');
+          NODE
