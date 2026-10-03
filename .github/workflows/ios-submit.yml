@@ -1,4 +1,4 @@
-name: Submit current iPhone build to TestFlight
+name: Submit Nieto Green Care to TestFlight
 on:
   push:
     branches: [main]
