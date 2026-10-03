@@ -3,8 +3,14 @@ name: iPhone build (Apple credentials required)
 on:
   workflow_dispatch:
     inputs:
+      profile:
+        description: production for TestFlight, preview for registered devices
+        type: choice
+        options: [production, preview]
+        default: production
+        required: true
       apple_ready:
-        description: Apple Developer signing credentials and registered devices are configured in EAS
+        description: Signing credentials for the selected distribution are configured in EAS
         type: boolean
         default: false
         required: true
@@ -18,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      BUILD_PROFILE: ${{ inputs.profile }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
@@ -44,12 +51,14 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
-          config.build.preview.env = {
-            ...config.build.preview.env,
+          const profile = process.env.BUILD_PROFILE;
+          if (!['production', 'preview'].includes(profile)) throw new Error('Invalid profile');
+          config.build[profile].env = {
+            ...config.build[profile].env,
             EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
             EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
           };
           fs.writeFileSync('eas.json', JSON.stringify(config, null, 2));
           NODE
       - name: Request signed iPhone build
-        run: eas build --platform ios --profile preview --non-interactive --no-wait
+        run: eas build --platform ios --profile "$BUILD_PROFILE" --non-interactive --no-wait
