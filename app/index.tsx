@@ -1,5 +1,5 @@
 import { AdminManagement } from '../components/AdminManagement';
-import { shareInvoice } from '../services/admin';
+import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
@@ -166,21 +166,32 @@ export default function HomeScreen() {
       setMessage('Agenda sincronizada con el dueño.');
       return;
     }
+    async function readAll(table: string, column: string, ascending = false) {
+      const rows: any[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await supabase!.from(table).select('*').order(column, { ascending }).order('id').range(offset, offset + 499);
+        if (error) return { data: null, error };
+        rows.push(...(data ?? []));
+        if ((data?.length ?? 0) < 500) return { data: rows, error: null };
+      }
+    }
     const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
-      supabase.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
-      supabase.from('pricing_rules').select('*').order('min_sq_ft').limit(100),
-      supabase.from('gallery').select('*').order('created_at', { ascending: false }).limit(100),
+      readAll('leads', 'created_at', false),
+      readAll('pricing_rules', 'min_sq_ft', true),
+      readAll('gallery', 'created_at', false),
       supabase.from('app_settings').select('value').eq('key', 'customer_reviews').maybeSingle(),
-      supabase.from('crew_members').select('*').order('full_name').limit(100),
-      supabase.from('service_plans').select('*').order('created_at', { ascending: false }).limit(300),
-      supabase.from('work_orders').select('*').order('service_date', { ascending: false }).limit(1000),
-      supabase.from('work_invoices').select('*').order('created_at', { ascending: false }).limit(500),
+      readAll('crew_members', 'full_name', true),
+      readAll('service_plans', 'created_at', false),
+      readAll('work_orders', 'service_date', false),
+      readAll('work_invoices', 'created_at', false),
       supabase.from('site_sections').select('*').order('section').limit(100),
-      supabase.from('weekly_summaries').select('*').order('week_start', { ascending: false }).limit(60),
+      readAll('weekly_summaries', 'week_start', false),
     ]);
-    if (leadRows.error) return setMessage(`No se pudieron leer solicitudes: ${leadRows.error.message}`);
+    const loadError = [leadRows, workerRows, planRows, orderRows, invoiceRows].find(result => result.error)?.error;
+    if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
     const leadData = leadRows.data ?? [];
-    const planByLead = new Map((planRows.data ?? []).map((row: any) => [String(row.lead_id), row]));
+    const planByLead = new Map<string, any>();
+    for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row: any) => [String(row.order_id), row]));
     setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0) })));
     setHouses(leadData.map((row: any) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? row.details ?? '' }; }));
@@ -228,19 +239,12 @@ export default function HomeScreen() {
   function deleteOrder(id: string) { void updateStatus(id, 'CANCELADA'); }
   function deleteHouse(id: string) { setHouses((current) => current.filter((house) => house.id !== id)); setOrders((current) => current.filter((order) => order.houseId !== id)); void saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() }); }
   async function saveHouse(house: House) {
-    const isUuid = /^[0-9a-f-]{36}$/i.test(house.id);
-    const payload = { customer_name: house.client || 'Cliente', customer_phone: house.phone || '0000000000', customer_email: house.email || null, address: house.address || 'Direccion pendiente', city: house.city || 'Central Texas', zip_code: house.zipCode || '78626', final_price: house.price, details: house.service, additional_notes: house.notes, status: 'scheduled', requested_date: selectedDate };
-    if (supabase && session) {
-      const lead = isUuid ? await supabase.from('leads').update(payload).eq('id', house.id).select().single() : await supabase.from('leads').insert({ ...payload, reference_code: `APP-${Date.now()}`, source: 'mobile_app', selected_services: [house.service || 'lawn_service'], service_count: 1, area_sq_ft: 0, area_sq_yd: 0, estimated_cubic_yards: 0 }).select().single();
-      const leadId = lead.data?.id ?? house.id;
-      if (!house.planId) {
-        const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Una vez' ? 'one_time' : 'bi_weekly';
-        const plan = await supabase.from('service_plans').insert({ lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null }).select().single();
-        if (plan.data?.id) await supabase.from('work_orders').insert({ plan_id: plan.data.id, lead_id: leadId, crew_member_id: null, service_date: selectedDate, start_time: '08:00', duration_minutes: 60, status: 'scheduled', price: house.price, notes: house.notes || null });
-      }
-      void loadData();
-    }
-    setEditingHouse(null);
+    try {
+      const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Una vez' ? 'one_time' : null;
+      if(!cadence) throw new Error('Seleccione una frecuencia válida.');
+      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:{customer_name:house.client.trim(),customer_phone:house.phone.trim(),customer_email:house.email.trim()||null,address:house.address.trim(),city:house.city?.trim()||'',zip_code:house.zipCode?.trim()||''},cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
+      await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
+    } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
   }
   function createInvoice(houseId: string) {
     setTab('clientes');
@@ -383,11 +387,12 @@ function OrderCard({ order, house, worker, workerOnly, onStatus, onPay, onDelete
 }
 function IconButton({ color, icon, onPress }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) { return <Pressable style={[styles.iconButton, { backgroundColor: color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
 function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) { return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>; }
-function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => void }) {
+function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => Promise<void> }) {
   const [draft, setDraft] = useState<House | null>(house);
+  const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
   useEffect(() => setDraft(house), [house]);
   if (!draft) return null;
-  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'phone', 'email', 'service', 'frequency', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} /><Pressable style={styles.primaryButton} onPress={() => onSave(draft)}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 14 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
 function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {today}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;

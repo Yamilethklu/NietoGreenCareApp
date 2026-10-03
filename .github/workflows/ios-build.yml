@@ -3,7 +3,7 @@ name: iPhone build (Apple credentials required)
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/ios-build.yml']
+    paths: ['.github/workflows/ios-build.yml', 'app.json']
   workflow_dispatch:
     inputs:
       profile:
