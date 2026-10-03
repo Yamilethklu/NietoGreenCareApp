@@ -29,19 +29,21 @@ EXPO_PUBLIC_SUPABASE_URL=
 EXPO_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
-Si las variables no están configuradas, la app abre en modo demo con datos de ejemplo para revisar el flujo visual.
+Sin estas variables, la app no puede conectarse a Supabase ni sincronizar datos; no se cargan datos de ejemplo.
 
 Tablas que la app intenta leer cuando Supabase esta configurado:
 
 ```text
 leads
 pricing_rules
-gallery_items
-customer_reviews
+gallery
+app_settings
 crew_members
+service_plans
 work_orders
 work_invoices
 site_sections
+weekly_summaries
 ```
 
 ## Android

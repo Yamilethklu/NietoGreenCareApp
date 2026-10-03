@@ -6,7 +6,27 @@ import { adminRequest } from '../services/admin';
 import { supabase } from '../services/auth';
 
 type Mode = 'trabajadores' | 'precios' | 'galeria' | 'opiniones';
-type Row = { id: string; [key: string]: any };
+type Row = {
+ id: string;
+ full_name?: string;
+ email?: string;
+ phone?: string | null;
+ active?: boolean;
+ name?: string;
+ service_key?: string;
+ min_sq_ft?: number;
+ max_sq_ft?: number | null;
+ price?: number;
+ is_active?: boolean;
+ title?: string;
+ is_published?: boolean;
+ public_url?: string | null;
+ description?: string | null;
+ customer_name?: string;
+ rating?: number;
+ approved?: boolean;
+ comment?: string;
+};
 const field = { backgroundColor:'#fff', color:'#111827', borderColor:'#86efac', borderWidth:1, borderRadius:8, padding:12, marginVertical:5 } as const;
 const button = { backgroundColor:'#15803d', borderRadius:8, padding:12, marginVertical:5 } as const;
 function Action({label,onPress,disabled=false}:{label:string;onPress:()=>void;disabled?:boolean}) { return <Pressable disabled={disabled} style={[button,{opacity:disabled?0.5:1}]} onPress={onPress}><Text style={{color:'#fff',fontWeight:'700'}}>{label}</Text></Pressable>; }
@@ -41,9 +61,9 @@ export function AdminManagement({mode,onChanged}:{mode:Mode;onChanged:()=>Promis
   {mode==='galeria'&&<View><TextInput style={field} placeholder="Título de la foto o video" value={title} onChangeText={setTitle}/><TextInput style={field} placeholder="Descripción" value={description} onChangeText={setDescription}/><Action disabled={busy} label="Seleccionar y subir foto o video" onPress={()=>void run(upload)}/></View>}
   {message!==''&&<Text accessibilityLiveRegion="polite" style={{marginVertical:12}}>{message}</Text>}
   {rows.map(row=><View key={row.id} style={[field,{marginVertical:10,backgroundColor:'#dcfce7'}]}>
-   {mode==='trabajadores'&&<><Text style={{fontWeight:'700'}}>{row.full_name}</Text><Text>{row.email} · {row.active?'Activo':'Inactivo'}</Text><Action disabled={busy} label="Editar" onPress={()=>{setEditing(row.id);setName(row.full_name);setEmail(row.email);setPhone(row.phone||'');}}/><Action disabled={busy} label={row.active?'Desactivar acceso':'Activar acceso'} onPress={()=>void run(()=>adminRequest('operations','POST',{action:'worker_update',id:row.id,changes:{active:!row.active}}))}/></>}
-   {mode==='precios'&&<><Text>{row.name} · ${Number(row.price).toFixed(2)} · {row.is_active?'Activa':'Pausada'}</Text><Action disabled={busy} label="Editar rango y precio" onPress={()=>{setEditing(row.id);setFrequency(row.service_key);setMin(String(row.min_sq_ft));setMax(row.max_sq_ft===null?'':String(row.max_sq_ft));setPrice(String(row.price));}}/><Action disabled={busy} label={row.is_active?'Pausar':'Activar'} onPress={()=>void run(()=>adminRequest('pricing','PATCH',{id:row.id,changes:{is_active:!row.is_active}}))}/></>}
-   {mode==='galeria'&&<><Text>{row.title} · {row.is_published?'Público':'Oculto'}</Text>{/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(row.public_url||'')&&<Image source={{uri:row.public_url}} style={{height:180,width:'100%',marginVertical:8}} resizeMode="cover"/>}<Text>{row.description}</Text><Action disabled={busy} label={row.is_published?'Ocultar':'Publicar'} onPress={()=>void run(()=>adminRequest('gallery','PATCH',{id:row.id,changes:{is_published:!row.is_published}}))}/><Action disabled={busy} label="Eliminar" onPress={()=>remove(row)}/></>}
+   {mode==='trabajadores'&&<><Text style={{fontWeight:'700'}}>{row.full_name}</Text><Text>{row.email} · {row.active?'Activo':'Inactivo'}</Text><Action disabled={busy} label="Editar" onPress={()=>{setEditing(row.id);setName(row.full_name ?? '');setEmail(row.email ?? '');setPhone(row.phone||'');}}/><Action disabled={busy} label={row.active?'Desactivar acceso':'Activar acceso'} onPress={()=>void run(()=>adminRequest('operations','POST',{action:'worker_update',id:row.id,changes:{active:!row.active}}))}/></>}
+   {mode==='precios'&&<><Text>{row.name} · ${Number(row.price).toFixed(2)} · {row.is_active?'Activa':'Pausada'}</Text><Action disabled={busy} label="Editar rango y precio" onPress={()=>{setEditing(row.id);setFrequency(row.service_key ?? 'lawn_weekly');setMin(String(row.min_sq_ft ?? 0));setMax(row.max_sq_ft==null?'':String(row.max_sq_ft));setPrice(String(row.price ?? 0));}}/><Action disabled={busy} label={row.is_active?'Pausar':'Activar'} onPress={()=>void run(()=>adminRequest('pricing','PATCH',{id:row.id,changes:{is_active:!row.is_active}}))}/></>}
+   {mode==='galeria'&&<><Text>{row.title} · {row.is_published?'Público':'Oculto'}</Text>{/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(row.public_url||'')&&<Image source={{uri:row.public_url ?? undefined}} style={{height:180,width:'100%',marginVertical:8}} resizeMode="cover"/>}<Text>{row.description}</Text><Action disabled={busy} label={row.is_published?'Ocultar':'Publicar'} onPress={()=>void run(()=>adminRequest('gallery','PATCH',{id:row.id,changes:{is_published:!row.is_published}}))}/><Action disabled={busy} label="Eliminar" onPress={()=>remove(row)}/></>}
    {mode==='opiniones'&&<><Text>{row.customer_name} · {row.rating}/5 · {row.approved?'Publicada':'Pendiente'}</Text><Text>{row.comment}</Text><Action disabled={busy} label={row.approved?'Ocultar':'Aprobar y publicar'} onPress={()=>void run(()=>adminRequest('reviews','PATCH',{id:row.id,approved:!row.approved}))}/><Action disabled={busy} label="Eliminar" onPress={()=>remove(row)}/></>}
   </View>)}
  </View>;
