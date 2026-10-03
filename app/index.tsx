@@ -63,6 +63,8 @@ export default function HomeScreen() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
   const [sectionSaveMessages, setSectionSaveMessages] = useState<Record<string, string>>({});
+  const [savingSections, setSavingSections] = useState<Record<string, boolean>>({});
+  const savingSectionsRef = useRef(new Set<string>());
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
@@ -126,11 +128,17 @@ export default function HomeScreen() {
     catch { setMessage('No se pudo activar el recordatorio. Revisa los permisos del teléfono.'); }
   }
   async function saveSection(section: Section) {
+    if (savingSectionsRef.current.has(section.id)) return;
+    savingSectionsRef.current.add(section.id);
+    setSavingSections((current) => ({ ...current, [section.id]: true }));
     try {
       await saveRow('site_sections', section.id, { body: section.body });
       setSectionSaveMessages((current) => ({ ...current, [section.id]: 'Contenido guardado.' }));
     } catch (error) {
       setSectionSaveMessages((current) => ({ ...current, [section.id]: error instanceof Error ? error.message : 'No se pudo guardar el contenido.' }));
+    } finally {
+      savingSectionsRef.current.delete(section.id);
+      setSavingSections((current) => ({ ...current, [section.id]: false }));
     }
   }
   function openExternalUrl(url: string) {
@@ -150,10 +158,10 @@ export default function HomeScreen() {
     for (const order of orders) {
       if (order.status === 'FINALIZADA') completedByHouse.set(order.houseId, (completedByHouse.get(order.houseId) ?? 0) + 1);
     }
-    const paidByPhone = new Map<string, number>();
+    const paidByCustomerKey = new Map<string, number>();
     for (const house of houses) {
-      const phone = normalizePhone(house.phone);
-      if (phone) paidByPhone.set(phone, (paidByPhone.get(phone) ?? 0) + (paidByHouseId.get(house.id) ?? 0));
+      const key = normalizePhone(house.phone) || house.id;
+      paidByCustomerKey.set(key, (paidByCustomerKey.get(key) ?? 0) + (paidByHouseId.get(house.id) ?? 0));
     }
     leads.forEach((lead) => {
       const phone = normalizePhone(lead.phone);
@@ -161,13 +169,14 @@ export default function HomeScreen() {
       const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
       item.requests += 1;
       if (lead.status === 'completed') item.completed += 1;
-      item.paidTotal = phone ? paidByPhone.get(phone) ?? 0 : paidByHouseId.get(lead.id) ?? 0;
+      // The customer-key total is already aggregated across all matching houses.
+      item.paidTotal = paidByCustomerKey.get(key) ?? paidByHouseId.get(lead.id) ?? 0;
       map.set(key, item);
     });
     houses.forEach((house) => {
       const phone = normalizePhone(house.phone);
       const key = phone || house.id;
-      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByHouseId.get(house.id) ?? 0 });
+      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByCustomerKey.get(key) ?? paidByHouseId.get(house.id) ?? 0 });
     });
     return [...map.values()];
   }, [houses, invoices, leads, orders]);
@@ -301,12 +310,18 @@ export default function HomeScreen() {
   async function saveRow(table: string, id: string, values: Record<string, unknown>) {
     if (!supabase || !session) return;
     const { error } = await supabase.from(table).update(values).eq('id', id);
-    if (error) throw new Error(`No se pudo guardar en ${table}: ${error.message}`);
+    if (error) {
+      console.error(`No se pudo guardar en ${table}.`, error);
+      throw new Error('No se pudo guardar el cambio.');
+    }
   }
   async function deleteRow(table: string, id: string) {
     if (!supabase || !session) return;
     const { error } = await supabase.from(table).delete().eq('id', id);
-    if (error) setMessage(`No se pudo eliminar en ${table}: ${error.message}`);
+    if (error) {
+      console.error(`No se pudo eliminar en ${table}.`, error);
+      setMessage('No se pudo eliminar el elemento.');
+    }
   }
   async function updateStatus(id: string, status: Status) {
     if (await updateOrder(id, { status: dbOrderStatus(status) })) await loadData();
@@ -441,7 +456,7 @@ export default function HomeScreen() {
         {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
         {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
         {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
-        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); setSectionSaveMessages((current) => ({ ...current, [section.id]: '' })); }} /><Pressable style={styles.smallButton} onPress={() => void saveSection(section)}><Text style={styles.smallButtonText}>Guardar contenido</Text></Pressable><Text accessibilityLiveRegion="polite" style={styles.cardMeta}>{sectionSaveMessages[section.id]}</Text></Card>)}</>}
+        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline disabled={savingSections[section.id]} onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); setSectionSaveMessages((current) => ({ ...current, [section.id]: '' })); }} /><Pressable accessibilityRole="button" disabled={savingSections[section.id]} style={[styles.smallButton, savingSections[section.id] && { opacity: 0.5 }]} onPress={() => void saveSection(section)}><Text style={styles.smallButtonText}>{savingSections[section.id] ? 'Guardando...' : 'Guardar contenido'}</Text></Pressable><Text accessibilityLiveRegion="polite" style={styles.cardMeta}>{sectionSaveMessages[section.id]}</Text></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
@@ -511,7 +526,7 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
 function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {texasDate()}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
 }
-function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean }) {
+function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean; disabled?: boolean }) {
   return <View><Text style={styles.label}>{props.label}</Text><TextInput {...props} style={[styles.input, props.multiline && styles.textarea]} placeholder={props.label} /></View>;
 }
 function EmptyState({ text }: { text: string }) { return <View style={styles.empty}><Ionicons name="calendar-clear-outline" size={38} color="#64748b" /><Text style={styles.emptyText}>{text}</Text></View>; }
