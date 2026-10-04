@@ -13,7 +13,7 @@ function loadAuth(env = {}, options = {}) {
     exchangeCodeForSession: async code => { calls.push(code); session = { user: { id: 'test-user' } }; return { error: null }; },
     signInWithOAuth: async request => {
       assert.equal(saved.get('ngc-access-role'), options.role || 'admin');
-      assert.equal(request.options.redirectTo, 'nietogreencare://');
+      assert.equal(request.options.redirectTo, 'nietogreencare://admin');
       assert.equal(request.options.skipBrowserRedirect, true);
       return { data: { url: 'https://example.test/authorize' }, error: null };
     },
@@ -99,4 +99,15 @@ test('Android dismissal preserves an already received session', async () => {
 test('callback with missing code reports an error instead of silent return', async () => {
  const {api}=loadAuth(config);
  await assert.rejects(api.finishGoogleSignIn('nietogreencare://?unexpected=value'),/código de acceso válido/);
+});
+
+test('explicit native admin callback exchanges the code', async () => {
+ const {api,calls}=loadAuth(config);
+ await api.finishGoogleSignIn('nietogreencare://admin?code=native-admin');
+ assert.deepEqual(calls,['native-admin']);
+});
+test('unexpected paths cannot exchange a code', async () => {
+ const {api,calls}=loadAuth(config);
+ await api.finishGoogleSignIn('nietogreencare://admin/unknown?code=untrusted');
+ assert.deepEqual(calls,[]);
 });

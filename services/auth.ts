@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
-export const authRedirect = 'nietogreencare://';
+export const authRedirect = 'nietogreencare://admin';
 const storage = Platform.OS === 'web' ? undefined : {
   getItem: (name: string) => SecureStore.getItemAsync(name),
   setItem: (name: string, value: string) => SecureStore.setItemAsync(name, value),
@@ -33,7 +33,7 @@ WebBrowser.maybeCompleteAuthSession();
 const exchanges = new Map<string, Promise<void>>();
 export async function finishGoogleSignIn(callback: string) {
   const parsed = new URL(callback);
-  if (parsed.protocol !== 'nietogreencare:' || parsed.hostname || (parsed.pathname && parsed.pathname !== '/')) return;
+  if (parsed.protocol !== 'nietogreencare:' || (parsed.hostname && parsed.hostname !== 'admin') || (parsed.pathname && parsed.pathname !== '/')) return;
   const fragment = new URLSearchParams(parsed.hash.slice(1));
   if (parsed.searchParams.has('error') || fragment.has('error')) throw new Error('Google no autorizó el acceso o el enlace ya fue utilizado. Cierra el navegador y pulsa Continuar con Google para iniciar un acceso nuevo.');
   const code = parsed.searchParams.get('code');
