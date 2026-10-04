@@ -1,6 +1,6 @@
 # Distribución móvil y notificaciones
 
-Android: el workflow Android APK publica app-release.apk en la release existente al recibir cambios en main. Mantiene el mismo enlace de descarga.
+Android: el workflow Android APK publica una APK firmada en GitHub Releases al recibir cambios en main. Configura `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` como secretos de Actions; el keystore no debe versionarse. Mantén la misma clave para todas las versiones publicadas para que Android permita actualizar la aplicación. Las APK antiguas firmadas con la clave de depuración requieren desinstalarse antes de instalar la primera APK firmada con la clave de producción.
 
 iPhone: no instala archivos APK. Este proyecto tiene perfiles EAS para distribución interna en dispositivos registrados (`eas build --platform ios --profile preview`) y distribución por TestFlight/App Store (`eas build --platform ios --profile production`). Se requiere acceso autorizado a Expo y Apple Developer, certificado y perfil de aprovisionamiento. No publicar una IPA sin firmar como si fuera instalable.
 

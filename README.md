@@ -48,11 +48,12 @@ weekly_summaries
 
 ## Android
 
-- [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.0/app-release.apk)
+- [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.7/NietoGreenCare-Android.apk)
 - Instalar el APK en el teléfono y permitir la instalación desde el navegador si Android lo solicita.
+- La primera instalación firmada con la nueva clave puede requerir desinstalar la versión anterior; los datos sincronizados permanecen en Supabase.
 - Es necesaria una conexión a internet para consultar y guardar las solicitudes.
 
-Para generar una nueva APK, el flujo `.github/workflows/android-apk.yml` ejecuta TypeScript y `assembleRelease`, publica el archivo como artefacto y actualiza la descarga en GitHub Releases.
+Para publicar una APK, configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` en GitHub Actions. El flujo `.github/workflows/android-apk.yml` ejecuta TypeScript y `assembleRelease`, publica el archivo como artefacto y actualiza la descarga versionada en GitHub Releases. Pull requests ejecutan validaciones sin recibir secretos ni publicar APK.
 
 ## Desarrollo
 

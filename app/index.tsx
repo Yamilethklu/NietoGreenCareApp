@@ -1,15 +1,16 @@
 import { AdminManagement } from '../components/AdminManagement';
-import { shareInvoice, adminRequest } from '../services/admin';
+import { shareInvoice, adminRequest, siteUrl } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
 import { supabase, finishGoogleSignIn, signInWithGoogle, rememberAccessRole, restoreAccessRole } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-const SITE_URL = 'https://nietogreecare-site.vercel.app';
+const SITE_URL = siteUrl;
 const APP_LOGO = require('../assets/icon.png');
 const VISIBLE_WEEKLY_SUMMARIES = 6;
 
@@ -320,9 +321,9 @@ export default function HomeScreen() {
   }
 
   async function saveRow(table: string, id: string, values: Record<string, unknown>) {
-    if (!supabase || !session) return;
-    const { error } = await supabase.from(table).update(values).eq('id', id);
-    if (error) {
+    if (!supabase || !session) throw new Error('Inicia sesión nuevamente.');
+    const { data, error } = await supabase.from(table).update(values).eq('id', id).select('id').maybeSingle();
+    if (error || !data) {
       console.error(`No se pudo guardar en ${table}.`, error);
       throw new Error('No se pudo guardar el cambio.');
     }
@@ -467,7 +468,7 @@ export default function HomeScreen() {
         {tab === 'precios' && <AdminManagement key="precios" mode="precios" onChanged={loadData} />}
         {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
         {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
-        {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
+        {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><QRCode value={`${SITE_URL}/quote`} size={132} /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
         {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline disabled={savingSections[section.id]} onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); setSectionSaveMessages((current) => ({ ...current, [section.id]: '' })); }} /><Pressable accessibilityRole="button" disabled={savingSections[section.id]} style={[styles.smallButton, savingSections[section.id] && { opacity: 0.5 }]} onPress={() => void saveSection(section)}><Text style={styles.smallButtonText}>{savingSections[section.id] ? 'Guardando...' : 'Guardar contenido'}</Text></Pressable><Text accessibilityLiveRegion="polite" style={styles.cardMeta}>{sectionSaveMessages[section.id]}</Text></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
@@ -519,14 +520,14 @@ function Metric({ label, value }: { label: string; value: string }) { return <Vi
 function Card({ title, meta, status, tone = 'white', children }: { title: string; meta?: string; status?: string; tone?: 'green' | 'gray' | 'red' | 'white'; children?: ReactNode }) {
   return <View style={styles.card}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{title}</Text>{meta ? <Text style={styles.cardMeta}>{meta}</Text> : null}</View>{status ? <StatusPill label={status} tone={tone} /> : null}</View>{children}</View>;
 }
-function Actions({ items }: { items: [keyof typeof Ionicons.glyphMap, string, () => void][] }) {
-  return <View style={styles.actions}>{items.map(([icon, color, onPress], index) => <IconButton key={`${icon}-${index}`} color={color} icon={icon} onPress={onPress} />)}</View>;
+function Actions({ items }: { items: [keyof typeof Ionicons.glyphMap, string, () => void, boolean?][] }) {
+  return <View style={styles.actions}>{items.map(([icon, color, onPress, disabled], index) => <IconButton key={`${icon}-${index}`} color={color} icon={icon} onPress={onPress} disabled={disabled} />)}</View>;
 }
 function OrderCard({ order, house, worker, workerOnly, onStatus, onPay, onDelete, onHistory, workers, onAssign }: { workers: Worker[]; onAssign: (id:string|null)=>void; order: Order; house?: House; worker?: Worker; workerOnly?: boolean; onStatus: (id: string, status: Status) => void; onPay: (id: string) => void; onDelete: (id: string) => void; onHistory: () => void }) {
   const rowStyle = order.status === 'FINALIZADA' ? styles.doneCard : order.status === 'CANCELADA' ? styles.canceledCard : undefined;
-  return <View style={[styles.card, rowStyle]}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{house?.address ?? 'Direccion pendiente'}</Text><Text style={styles.cardMeta}>{order.service} - {worker?.name ?? 'Sin asignar'}</Text><Text style={styles.total}>${order.price.toFixed(2)}</Text></View><StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} /></View><Text style={styles.cardMeta}>{order.paid ? 'Pagado' : order.paidAmount > 0 ? 'Pago parcial' : 'Pago pendiente'} · Método: {order.paymentMethod || 'Sin registrar'} · Saldo: ${Math.max(0, order.price - order.paidAmount).toFixed(2)}</Text>{order.notes ? <Text style={styles.notes}>{order.notes}</Text> : null}{!workerOnly&&<View><Text style={styles.label}>Asignar trabajador a esta visita</Text><View style={styles.segment}>{[{id:'',name:'Sin asignar'},...workers].map(member=><Pressable key={member.id} style={[styles.segmentButton,order.workerId===member.id&&styles.segmentActive]} onPress={()=>onAssign(member.id||null)}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View></View>}<Actions items={workerOnly ? [['checkmark-done-outline', '#0f766e', () => onStatus(order.id, 'FINALIZADA')], ['cash-outline', '#16a34a', () => onPay(order.id)]] : [['checkmark-done-outline', '#0f766e', () => onStatus(order.id, 'FINALIZADA')], ['ban-outline', '#6b7280', () => onStatus(order.id, 'CANCELADA')], ['albums-outline', order.paid ? '#cbd5e1' : '#2563eb', onHistory], ['cash-outline', order.paid ? '#cbd5e1' : '#16a34a', () => onPay(order.id)], ['trash-outline', '#dc2626', () => onDelete(order.id)]]} /></View>;
+  return <View style={[styles.card, rowStyle]}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{house?.address ?? 'Direccion pendiente'}</Text><Text style={styles.cardMeta}>{order.service} - {worker?.name ?? 'Sin asignar'}</Text><Text style={styles.total}>${order.price.toFixed(2)}</Text></View><StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} /></View><Text style={styles.cardMeta}>{order.paid ? 'Pagado' : order.paidAmount > 0 ? 'Pago parcial' : 'Pago pendiente'} · Método: {order.paymentMethod || 'Sin registrar'} · Saldo: ${Math.max(0, order.price - order.paidAmount).toFixed(2)}</Text>{order.notes ? <Text style={styles.notes}>{order.notes}</Text> : null}{!workerOnly&&<View><Text style={styles.label}>Asignar trabajador a esta visita</Text><View style={styles.segment}>{[{id:'',name:'Sin asignar'},...workers].map(member=><Pressable key={member.id} style={[styles.segmentButton,order.workerId===member.id&&styles.segmentActive]} onPress={()=>onAssign(member.id||null)}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View></View>}<Actions items={workerOnly ? [['checkmark-done-outline', '#0f766e', () => onStatus(order.id, 'FINALIZADA')], ['cash-outline', '#16a34a', () => onPay(order.id), order.paid]] : [['checkmark-done-outline', '#0f766e', () => onStatus(order.id, 'FINALIZADA')], ['ban-outline', '#6b7280', () => onStatus(order.id, 'CANCELADA')], ['albums-outline', order.paid ? '#cbd5e1' : '#2563eb', onHistory, order.paid], ['cash-outline', order.paid ? '#cbd5e1' : '#16a34a', () => onPay(order.id), order.paid], ['trash-outline', '#dc2626', () => onDelete(order.id)]]} /></View>;
 }
-function IconButton({ color, icon, onPress }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) { return <Pressable style={[styles.iconButton, { backgroundColor: color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
+function IconButton({ color, icon, onPress, disabled = false }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean }) { return <Pressable disabled={disabled} style={[styles.iconButton, { backgroundColor: color, opacity: disabled ? 0.5 : 1 }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
 function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) { return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>; }
 function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => Promise<void> }) {
   const [draft, setDraft] = useState<House | null>(house);
@@ -538,8 +539,8 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
 function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {texasDate()}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
 }
-function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean; disabled?: boolean }) {
-  return <View><Text style={styles.label}>{props.label}</Text><TextInput {...props} style={[styles.input, props.multiline && styles.textarea]} placeholder={props.label} /></View>;
+function Field({ label, value, onChangeText, keyboardType = 'default', multiline = false, secureTextEntry = false, disabled = false }: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean; disabled?: boolean }) {
+  return <View><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} multiline={multiline} secureTextEntry={secureTextEntry} editable={!disabled} style={[styles.input, multiline && styles.textarea]} placeholder={label} /></View>;
 }
 function EmptyState({ text }: { text: string }) { return <View style={styles.empty}><Ionicons name="calendar-clear-outline" size={38} color="#64748b" /><Text style={styles.emptyText}>{text}</Text></View>; }
 

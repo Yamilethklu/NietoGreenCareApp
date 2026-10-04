@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml', 'eas.json']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml', 'eas.json']
   workflow_dispatch:
 
 permissions:
@@ -19,6 +22,23 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Check Android release signing credentials
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo '::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD repository secrets.'
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/android-release.keystore" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -47,17 +67,21 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       - name: Publish workflow artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: NietoGreenCare-Android
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
       - name: Publish direct download
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view app-v1.1.0 >/dev/null 2>&1; then
-            gh release upload app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --clobber
+          APP_VERSION=$(node -p "require('./app.json').expo.version")
+          RELEASE_TAG="app-v$APP_VERSION"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --clobber
           else
-            gh release create app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --title "Nieto Green Care Android 1.1.0" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
+            gh release create "$RELEASE_TAG" android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --title "Nieto Green Care Android $APP_VERSION" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
           fi
