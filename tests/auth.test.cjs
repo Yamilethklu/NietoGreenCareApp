@@ -8,9 +8,9 @@ function loadAuth(env = {}, options = {}) {
   const saved = new Map();
   const calls = [];
   let configuredKey;
-  const session = { user: { id: 'test-user' } };
+  let session = options.session || null;
   const auth = {
-    exchangeCodeForSession: async code => { calls.push(code); return { error: null }; },
+    exchangeCodeForSession: async code => { calls.push(code); session = { user: { id: 'test-user' } }; return { error: null }; },
     signInWithOAuth: async request => {
       assert.equal(saved.get('ngc-access-role'), options.role || 'admin');
       assert.equal(request.options.redirectTo, 'nietogreencare://');
@@ -82,4 +82,21 @@ test('cancelled browser does not claim a successful login', async () => {
   const { api, calls } = loadAuth(config, { result: { type: 'cancel' } });
   assert.equal(await api.signInWithGoogle('admin'), false);
   assert.deepEqual(calls, []);
+});
+
+test('double tap shares one OAuth request and one code exchange', async () => {
+ const {api,calls}=loadAuth(config);
+ const first=api.signInWithGoogle('admin');
+ const second=api.signInWithGoogle('admin');
+ assert.equal(first,second);
+ assert.deepEqual(await Promise.all([first,second]),[true,true]);
+ assert.deepEqual(calls,['google-code']);
+});
+test('Android dismissal preserves an already received session', async () => {
+ const {api}=loadAuth(config,{result:{type:'dismiss'},session:{user:{id:'test-user'}}});
+ assert.equal(await api.signInWithGoogle('admin'),true);
+});
+test('callback with missing code reports an error instead of silent return', async () => {
+ const {api}=loadAuth(config);
+ await assert.rejects(api.finishGoogleSignIn('nietogreencare://?unexpected=value'),/código de acceso válido/);
 });
