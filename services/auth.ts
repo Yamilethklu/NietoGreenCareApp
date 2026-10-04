@@ -45,7 +45,8 @@ export async function finishGoogleSignIn(callback: string) {
   if (!exchanges.has(code)) {
     exchanges.set(code, (async () => {
       const { error } = await supabase!.auth.exchangeCodeForSession(code);
-      if (error) throw new Error('No se pudo completar el acceso con Google. Vuelve a intentarlo.');
+      // PKCE codes are single-use: a replayed callback is harmless when a session already exists.
+      if (error && !(await supabase!.auth.getSession()).data.session) throw new Error('No se pudo completar el acceso con Google. Vuelve a intentarlo.');
     })());
   }
   await exchanges.get(code);
