@@ -46,18 +46,20 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      - name: Prepare named APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk NietoGreenCare-Android.apk
       - name: Publish workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: NietoGreenCare-Android
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: NietoGreenCare-Android.apk
           if-no-files-found: error
       - name: Publish direct download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view app-v1.1.0 >/dev/null 2>&1; then
-            gh release upload app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --clobber
+            gh release upload app-v1.1.0 NietoGreenCare-Android.apk --clobber
           else
-            gh release create app-v1.1.0 android/app/build/outputs/apk/release/app-release.apk#NietoGreenCare-Android.apk --title "Nieto Green Care Android 1.1.0" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
+            gh release create app-v1.1.0 NietoGreenCare-Android.apk --title "Nieto Green Care Android 1.1.0" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
           fi
