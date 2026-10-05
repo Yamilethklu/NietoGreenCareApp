@@ -1,3 +1,4 @@
+import { PanelNavigation, panelSections, type PanelTab } from '../components/PanelNavigation';
 import { AdminManagement } from '../components/AdminManagement';
 import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
@@ -16,7 +17,7 @@ const VISIBLE_WEEKLY_SUMMARIES = 6;
 type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
 type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled';
 type PayMethod = 'Cash' | 'CashApp' | 'Venmo' | 'Zelle';
-type Tab = 'dashboard' | 'solicitudes' | 'clientes' | 'agenda' | 'casas' | 'invoices' | 'trabajadores' | 'precios' | 'galeria' | 'opiniones' | 'qr' | 'editor';
+type Tab = PanelTab;
 type House = { id: string; planId?: string; client: string; address: string; city?: string; zipCode?: string; phone: string; email: string; frequency: string; service: string; price: number; active: boolean; notes: string };
 type Order = { id: string; houseId: string; date: string; service: string; price: number; status: Status; paid: boolean; paidAmount: number; paymentMethod?: string; workerId?: string; notes?: string; invoiceId?: string };
 type Invoice = { id: string; houseId: string; createdAt: string; orderIds: string[]; number?: string; total: number; paid: boolean; sentAt?: string | null };
@@ -40,6 +41,8 @@ type SectionRow = { id: string; section: string | null; title: string | null; bo
 
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const contentRef = useRef<ScrollView>(null);
   const [selectedDate, setSelectedDate] = useState(texasDate);
   const dayRef = useRef(texasDate());
   const refreshRef = useRef<() => Promise<void>>(async () => {});
@@ -277,7 +280,7 @@ export default function HomeScreen() {
     ]);
     const loadError = [leadRows, workerRows, planRows, orderRows, invoiceRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
-    const auxiliaryLoadError = [priceRows, galleryRows, reviewRow, sectionRows, weeklyRows].some(result => result.error);
+    const pendingSections = [['Precios',priceRows],['Galería',galleryRows],['Opiniones',reviewRow],['Editor',sectionRows],['Resúmenes',weeklyRows]].filter(([,result]) => typeof result !== 'string' && result.error).map(([name]) => name);
     const leadData = leadRows.data ?? [];
     const planByLead = new Map<string, PlanRow>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
@@ -308,7 +311,8 @@ export default function HomeScreen() {
     if (sectionRows.data) setSections(sectionRows.data.map((row) => ({ id: row.id, section: row.section ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? '', visible: Boolean(row.visible ?? true) })));
     if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     const summarySaved = await ensureCurrentWeeklySummary(orderRows.data ?? []);
-    setMessage(auxiliaryLoadError || !summarySaved ? 'Datos sincronizados, pero algunas secciones no se pudieron actualizar.' : 'Datos sincronizados con el panel web');
+    if (!summarySaved && !pendingSections.includes('Resúmenes')) pendingSections.push('Resúmenes');
+    setMessage(pendingSections.length ? `Sincronización pendiente: ${pendingSections.join(', ')}. Pulsa sincronizar para reintentar.` : 'Actualizado con el sitio web');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la agenda. Revisa tu conexión.'); }
     finally {
       loadingRef.current = false;
@@ -452,11 +456,16 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View><MiniButton icon="globe-outline" label="Sitio" onPress={() => openExternalUrl(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{((role === 'worker' ? ['agenda'] : ['dashboard', 'solicitudes', 'clientes', 'agenda', 'casas', 'invoices', 'trabajadores', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={item} onPress={() => setTab(item)} />)}</ScrollView>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable style={styles.smallButton} onPress={() => void enableNotifications()}><Text style={styles.smallButtonText}>Activar recordatorio diario</Text></Pressable>
-        {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
+      <View style={styles.panelHeader}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Abrir menú" accessibilityState={{expanded:menuOpen}} onPress={()=>setMenuOpen(true)} style={styles.menuTrigger}><Ionicons name="menu-outline" size={26} color="#14532d" /></Pressable>
+        <Image source={APP_LOGO} style={styles.panelLogo} resizeMode="contain" />
+        <View style={styles.grow}><Text style={styles.panelBrand}>NIETO GREEN CARE</Text><Text style={styles.panelCaption}>{role === 'worker' ? 'Panel del trabajador' : 'Panel del propietario'}</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Sincronizar datos" onPress={()=>void loadData()} style={styles.menuTrigger}><Ionicons name="sync-outline" size={22} color="#166534" /></Pressable>
+      </View>
+      <View style={styles.sectionBar}><Text style={styles.sectionEyebrow}>{role === 'worker' ? 'MI TRABAJO' : 'MI NEGOCIO'}</Text><Text style={styles.currentSection}>{panelSections.find(item=>item.key===tab)?.label}</Text></View>
+      <PanelNavigation open={menuOpen} worker={role==='worker'} active={tab} onClose={()=>setMenuOpen(false)} onSelect={next=>{setTab(next);contentRef.current?.scrollTo({y:0,animated:false});}} onWebsite={()=>openExternalUrl(SITE_URL)} onSignOut={()=>void signOut()} onReminder={()=>void enableNotifications()} />
+      <ScrollView ref={contentRef} contentContainerStyle={styles.content}>
+        <View style={styles.syncNotice}><Ionicons name="cloud-outline" size={16} color="#64748b"/><Text accessibilityLiveRegion="polite" style={styles.syncText}>{message}</Text></View>
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, VISIBLE_WEEKLY_SUMMARIES).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => { void updateLeadStatus(lead.id, 'scheduled'); }], ['checkmark-done-outline', '#0f766e', () => { void updateLeadStatus(lead.id, 'completed'); }], ['ban-outline', '#6b7280', () => { void updateLeadStatus(lead.id, 'cancelled'); }], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
@@ -544,6 +553,12 @@ function Field(props: { label: string; value: string; onChangeText: (value: stri
 function EmptyState({ text }: { text: string }) { return <View style={styles.empty}><Ionicons name="calendar-clear-outline" size={38} color="#64748b" /><Text style={styles.emptyText}>{text}</Text></View>; }
 
 const styles = StyleSheet.create({
+  panelHeader:{flexDirection:'row',alignItems:'center',gap:10,paddingHorizontal:14,paddingVertical:14,backgroundColor:'#ffffff',borderBottomWidth:1,borderBottomColor:'#e8efeb'},
+  menuTrigger:{width:42,height:42,borderRadius:12,backgroundColor:'#f0f8f2',alignItems:'center',justifyContent:'center'},
+  panelLogo:{width:38,height:38,borderRadius:12},panelBrand:{fontSize:13,fontWeight:'800',color:'#14532d'},panelCaption:{fontSize:11,color:'#64748b',marginTop:3},
+  sectionBar:{paddingHorizontal:20,paddingTop:20,paddingBottom:12},sectionEyebrow:{fontSize:10,fontWeight:'800',letterSpacing:1.6,color:'#729180'},currentSection:{fontSize:26,fontWeight:'800',color:'#142d20',marginTop:4},
+  syncNotice:{flexDirection:'row',alignItems:'center',gap:8,paddingBottom:8},syncText:{flex:1,fontSize:12,lineHeight:17,color:'#64748b'},
+
   screen: { flex: 1, backgroundColor: '#f8fafc' },
   loginBox: { flex: 1, justifyContent: 'center', padding: 18, gap: 12 },
   logo: { width: 150, height: 150, alignSelf: 'center', marginBottom: 4 },
