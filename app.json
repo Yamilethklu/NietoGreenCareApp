@@ -27,7 +27,8 @@
           "color": "#1B4332"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-font"
     ],
     "ios": {
       "buildNumber": "10",
