@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nieto Green Care",
     "slug": "nieto-green-care",
-    "version": "1.1.8",
+    "version": "1.1.9",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "nietogreencare",
@@ -27,12 +27,16 @@
           "color": "#1B4332"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-font"
     ],
     "ios": {
       "buildNumber": "10",
       "supportsTablet": true,
-      "bundleIdentifier": "com.nietogreencare.app"
+      "bundleIdentifier": "com.nietogreencare.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.nietogreencare.app",
@@ -43,7 +47,8 @@
       },
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
-      ]
+      ],
+      "versionCode": 10
     },
     "web": {
       "bundler": "metro"
@@ -53,6 +58,15 @@
       "eas": {
         "projectId": "ee66ff82-78c1-4a92-801d-28ed5ec36feb"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ee66ff82-78c1-4a92-801d-28ed5ec36feb",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
