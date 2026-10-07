@@ -68,9 +68,6 @@ export default function HomeScreen() {
   const [sections, setSections] = useState<Section[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
-  const [sectionSaveMessages, setSectionSaveMessages] = useState<Record<string, string>>({});
-  const [savingSections, setSavingSections] = useState<Record<string, boolean>>({});
-  const savingSectionsRef = useRef(new Set<string>());
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
@@ -147,20 +144,6 @@ export default function HomeScreen() {
   async function enableNotifications() {
     try { setMessage(await enableDailyReminder() ? 'Recordatorio diario activado a las 6:00 a. m. del teléfono.' : 'Activa las notificaciones en los ajustes del teléfono para recibir el recordatorio.'); }
     catch { setMessage('No se pudo activar el recordatorio. Revisa los permisos del teléfono.'); }
-  }
-  async function saveSection(section: Section) {
-    if (savingSectionsRef.current.has(section.id)) return;
-    savingSectionsRef.current.add(section.id);
-    setSavingSections((current) => ({ ...current, [section.id]: true }));
-    try {
-      await saveRow('site_sections', section.id, { body: section.body });
-      setSectionSaveMessages((current) => ({ ...current, [section.id]: 'Contenido guardado.' }));
-    } catch (error) {
-      setSectionSaveMessages((current) => ({ ...current, [section.id]: error instanceof Error ? error.message : 'No se pudo guardar el contenido.' }));
-    } finally {
-      savingSectionsRef.current.delete(section.id);
-      setSavingSections((current) => ({ ...current, [section.id]: false }));
-    }
   }
   function openExternalUrl(url: string) {
     void Linking.openURL(url).catch(() => setMessage('No se pudo abrir el enlace.'));
@@ -489,7 +472,6 @@ export default function HomeScreen() {
         {tab === 'galeria' && <AdminManagement key="galeria" mode="galeria" onChanged={loadData} />}
         {tab === 'opiniones' && <AdminManagement key="opiniones" mode="opiniones" onChanged={loadData} />}
         {tab === 'qr' && <><SectionTitle title="Codigo QR del cotizador" /><View style={styles.qrBox}><Ionicons name="qr-code-outline" size={132} color="#052e16" /><Text style={styles.cardTitle}>Cotizador publico</Text><Text style={styles.cardMeta}>{SITE_URL}/quote</Text><Pressable style={styles.primaryButton} onPress={() => openExternalUrl(`${SITE_URL}/quote`)}><Text style={styles.primaryText}>Abrir cotizador</Text></Pressable></View></>}
-        {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline disabled={savingSections[section.id]} onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); setSectionSaveMessages((current) => ({ ...current, [section.id]: '' })); }} /><Pressable accessibilityRole="button" disabled={savingSections[section.id]} style={[styles.smallButton, savingSections[section.id] && { opacity: 0.5 }]} onPress={() => void saveSection(section)}><Text style={styles.smallButtonText}>{savingSections[section.id] ? 'Guardando...' : 'Guardar contenido'}</Text></Pressable><Text accessibilityLiveRegion="polite" style={styles.cardMeta}>{sectionSaveMessages[section.id]}</Text></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
