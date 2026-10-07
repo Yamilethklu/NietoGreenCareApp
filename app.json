@@ -7,10 +7,6 @@
     "userInterfaceStyle": "light",
     "scheme": "nietogreencare",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "backgroundColor": "#dcfce7"
-    },
     "plugins": [
       "expo-secure-store",
       "expo-router",
@@ -28,7 +24,14 @@
         }
       ],
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#dcfce7"
+        }
+      ]
     ],
     "ios": {
       "buildNumber": "10",
