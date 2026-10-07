@@ -15,7 +15,6 @@ export const panelSections = [
   { key: 'galeria', label: 'Galería', icon: 'images-outline', group: 'SITIO WEB' },
   { key: 'opiniones', label: 'Opiniones', icon: 'chatbubbles-outline', group: 'SITIO WEB' },
   { key: 'qr', label: 'Código QR', icon: 'qr-code-outline', group: 'SITIO WEB' },
-  { key: 'editor', label: 'Editor del sitio', icon: 'create-outline', group: 'SITIO WEB' },
 ] as const satisfies ReadonlyArray<{key: string; label: string; icon: ComponentProps<typeof Ionicons>['name']; group: string}>;
 export type PanelTab = typeof panelSections[number]['key'];
 
