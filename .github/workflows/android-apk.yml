@@ -1,10 +1,14 @@
+# DESHABILITADO: usar EAS manualmente (eas build, eas submit).
+# Este workflow se disparaba automáticamente y consumía cuota.
 name: Android APK
 
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml']
+  # Deshabilitado automáticamente. Usar EAS manualmente.
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Escribe YES para confirmar ejecución manual'
+        required: true
 
 permissions:
   contents: read
@@ -15,6 +19,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ inputs.confirm == 'YES' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

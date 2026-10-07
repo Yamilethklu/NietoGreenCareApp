@@ -1,13 +1,10 @@
-# DESHABILITADO: usar EAS manualmente (eas build, eas submit).
-# Este workflow se disparaba automáticamente y consumía cuota.
 name: Submit Nieto Green Care to TestFlight
 on:
-  # Deshabilitado automáticamente. Usar EAS manualmente.
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ios-submit.yml']
   workflow_dispatch:
     inputs:
-      confirm:
-        description: 'Escribe YES para confirmar ejecución manual'
-        required: true
       build_id:
         description: EAS iPhone production build ID
         required: true
@@ -16,7 +13,6 @@ permissions:
   contents: read
 jobs:
   submit:
-    if: ${{ inputs.confirm == 'YES' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

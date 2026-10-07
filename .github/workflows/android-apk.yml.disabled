@@ -1,36 +1,23 @@
-# DESHABILITADO: usar EAS manualmente (eas build, eas submit).
-# Este workflow se disparaba automáticamente y consumía cuota.
-name: iPhone build (Apple credentials required)
+name: Android APK
 
 on:
-  # Deshabilitado automáticamente. Usar EAS manualmente.
+  push:
+    branches: [main]
+    paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml']
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Escribe YES para confirmar ejecución manual'
-        required: true
-      profile:
-        description: production for TestFlight, preview for registered devices
-        type: choice
-        options: [production, preview]
-        default: production
-        required: true
-      apple_ready:
-        description: Signing credentials for the selected distribution are configured in EAS
-        type: boolean
-        default: false
-        required: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: android-apk-main
+  cancel-in-progress: true
+
 jobs:
   build:
-    if: ${{ inputs.confirm == 'YES' && inputs.apple_ready }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
-      BUILD_PROFILE: ${{ inputs.profile || 'production' }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
@@ -59,20 +46,13 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
-          const profile = process.env.BUILD_PROFILE;
-          if (!['production', 'preview'].includes(profile)) throw new Error('Invalid profile');
-          config.build[profile].env = {
-            ...config.build[profile].env,
+          config.build.preview.env = {
+            ...config.build.preview.env,
             EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
             EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
             EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
           };
           fs.writeFileSync('eas.json', JSON.stringify(config, null, 2));
           NODE
-      - name: Request signed iPhone build
-        run: |
-          if [ "$BUILD_PROFILE" = "production" ]; then
-            eas build --platform ios --profile production --non-interactive --no-wait --auto-submit
-          else
-            eas build --platform ios --profile "$BUILD_PROFILE" --non-interactive --no-wait
-          fi
+      - name: Request Android APK build
+        run: eas build --platform android --profile preview --non-interactive --no-wait
