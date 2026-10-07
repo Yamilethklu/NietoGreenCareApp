@@ -1,21 +1,14 @@
+# DESHABILITADO: usar EAS manualmente (eas build, eas submit).
+# Este workflow se disparaba automáticamente y consumía cuota.
 name: iPhone build (Apple credentials required)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ios-build.yml'
-      - 'app.json'
-      - 'eas.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app/**'
-      - 'components/**'
-      - 'lib/**'
-      - 'src/**'
-      - 'assets/**'
+  # Deshabilitado automáticamente. Usar EAS manualmente.
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'Escribe YES para confirmar ejecución manual'
+        required: true
       profile:
         description: production for TestFlight, preview for registered devices
         type: choice
@@ -33,7 +26,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'push' || inputs.apple_ready }}
+    if: ${{ inputs.confirm == 'YES' && inputs.apple_ready }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
