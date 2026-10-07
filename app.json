@@ -40,7 +40,6 @@
     },
     "android": {
       "package": "com.nietogreencare.app",
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#dcfce7"
