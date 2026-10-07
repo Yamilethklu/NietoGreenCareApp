@@ -16,9 +16,9 @@ export async function shareInvoice(id: string) {
   const session = (await supabase?.auth.getSession())?.data.session;
   if (!session) throw new Error('Inicia sesión nuevamente.');
   if (!(await Sharing.isAvailableAsync())) throw new Error('Este dispositivo no permite compartir archivos.');
-  const target = new File(Paths.cache, `factura-${id.replace(/[^a-z0-9-]/gi, '')}-${Date.now()}.pdf`);
+  const target = new File(Paths.document, `factura-${id.replace(/[^a-z0-9-]/gi, '')}-${Date.now()}.pdf`);
   try {
     const file = await File.downloadFileAsync(`${siteUrl}/api/admin/operations/invoice-file?id=${encodeURIComponent(id)}`, target, { headers: { Authorization: `Bearer ${session.access_token}` } });
     await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Factura del cliente' });
-  } finally { if (target.exists) target.delete(); }
+  } catch (error) { if (target.exists) target.delete(); throw error; }
 }
