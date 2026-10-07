@@ -3,11 +3,11 @@ name: Android APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml', 'eas.json']
+    paths-ignore: ['.github/workflows/ios*.yml', '.github/workflows/expo-status.yml']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-apk-main
@@ -16,67 +16,43 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check required configuration
+        run: |
+          if [ -z "$EXPO_TOKEN" ] || [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || { [ -z "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ] && [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; }; then
+            echo '::error::Missing EXPO_TOKEN or existing public Supabase configuration.'
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: expo/expo-github-action@v8
         with:
-          distribution: temurin
-          java-version: '17'
-      - name: Use the Android SDK installed on the runner
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
       - run: npm run typecheck
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       - run: node --test tests/auth.test.cjs
-      - name: Generate Android native project
-        run: npx expo prebuild --platform android --clean --non-interactive
-        env:
-          CI: '1'
-          EXPO_NO_TELEMETRY: '1'
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-      - name: Tune Gradle memory for GitHub runner
+      - name: Pass existing public app configuration to remote build
         run: |
-          {
-            echo "org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=2048m -Dfile.encoding=UTF-8"
-            echo "org.gradle.workers.max=1"
-            echo "org.gradle.parallel=false"
-            echo "kotlin.daemon.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m"
-          } >> android/gradle.properties
-      - name: Build installable APK
-        run: bash ./gradlew :app:assembleRelease --no-daemon --max-workers=1 --stacktrace
-        working-directory: android
-        env:
-          CI: '1'
-          NODE_OPTIONS: '--max-old-space-size=2048'
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-      - name: Prepare named APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk NietoGreenCare-Android.apk
-      - name: Publish workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: NietoGreenCare-Android
-          path: NietoGreenCare-Android.apk
-          if-no-files-found: error
-      - name: Publish direct download
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view app-v1.1.0 >/dev/null 2>&1; then
-            gh release upload app-v1.1.0 NietoGreenCare-Android.apk --clobber
-          else
-            gh release create app-v1.1.0 NietoGreenCare-Android.apk --title "Nieto Green Care Android 1.1.0" --notes "App Android conectada al sitio oficial. Las solicitudes se guardan en el mismo panel del sitio."
-          fi
+          node <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          config.build.preview.env = {
+            ...config.build.preview.env,
+            EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+            EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+            EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
+          };
+          fs.writeFileSync('eas.json', JSON.stringify(config, null, 2));
+          NODE
+      - name: Request Android APK build
+        run: eas build --platform android --profile preview --non-interactive --no-wait
