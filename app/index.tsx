@@ -4,6 +4,7 @@ import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
+import { Calendar } from 'react-native-calendars';
 import { supabase, finishGoogleSignIn, signInWithGoogle, rememberAccessRole, restoreAccessRole } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
@@ -41,6 +42,8 @@ type SectionRow = { id: string; section: string | null; title: string | null; bo
 
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [houseSearch, setHouseSearch] = useState('');
+  const [debouncedHouseSearch, setDebouncedHouseSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const contentRef = useRef<ScrollView>(null);
   const [selectedDate, setSelectedDate] = useState(texasDate);
@@ -74,6 +77,10 @@ export default function HomeScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedHouseSearch(houseSearch), 250);
+    return () => clearTimeout(timer);
+  }, [houseSearch]);
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -160,6 +167,11 @@ export default function HomeScreen() {
   }
 
   const visibleOrders = useMemo(() => orders.filter((order) => order.date === selectedDate && (role !== 'worker' || workerMatches(order, session?.user.email))).sort((a, b) => a.id.localeCompare(b.id)), [orders, selectedDate, role, session]);
+  const visibleHouses = useMemo(() => {
+    const query = normalizeSearch(debouncedHouseSearch);
+    if (!query) return houses;
+    return houses.filter((house) => normalizeSearch(`${house.address} ${house.city ?? ''} ${house.client}`).includes(query));
+  }, [houses, debouncedHouseSearch]);
   const filteredInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50), [invoiceFilter, invoices]);
   const customers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; phone: string; requests: number; completed: number; paidTotal: number }>();
@@ -469,8 +481,8 @@ export default function HomeScreen() {
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, VISIBLE_WEEKLY_SUMMARIES).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text><Actions items={[['calendar-outline', '#2563eb', () => { void updateLeadStatus(lead.id, 'scheduled'); }], ['checkmark-done-outline', '#0f766e', () => { void updateLeadStatus(lead.id, 'completed'); }], ['ban-outline', '#6b7280', () => { void updateLeadStatus(lead.id, 'cancelled'); }], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>)}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} />}
-        {tab === 'agenda' && <><SectionTitle title="Trabajos del dia" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><TextInput style={styles.input} value={selectedDate} onChangeText={setSelectedDate} placeholder="YYYY-MM-DD" />{visibleOrders.map((order) => <OrderCard key={order.id} workerOnly={role === 'worker'} order={order} house={getHouse(order.houseId)} worker={workers.find((w) => w.id === order.workerId)} onStatus={updateStatus} onPay={(id) => setPaymentTarget({ type: 'order', id })} onDelete={deleteOrder} onHistory={() => setTab('clientes')} workers={workers.filter(w => w.active)} onAssign={async workerId => { if(await updateOrder(order.id,{crew_member_id:workerId})) await loadData(); }} />)}{!visibleOrders.length && <EmptyState text="No hay casas agendadas para este dia." />}</>}
-        {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} />{houses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}</>}
+        {tab === 'agenda' && <><SectionTitle title="Agenda del Día" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => setSelectedDate(dateString)} /><ScrollView horizontal><View><View style={styles.tableRow}>{['ID', 'Fecha', 'Domicilio', 'Servicio', 'Precio', 'Status', 'Invoices', 'Notas'].map((label) => <Text key={label} style={[styles.tableHeader, label === 'Notas' ? styles.tableNotes : styles.tableCell]}>{label}</Text>)}</View>{visibleOrders.map((order) => { const house = getHouse(order.houseId); const worker = workers.find((item) => item.id === order.workerId); const invoice = invoices.find((item) => item.id === order.invoiceId); const workerOnly = role === 'worker'; const actions: [keyof typeof Ionicons.glyphMap, string, () => void][] = workerOnly ? [['checkmark-done-outline', '#0f766e', () => updateStatus(order.id, 'FINALIZADA')], ['cash-outline', '#16a34a', () => setPaymentTarget({ type: 'order', id: order.id })]] : [['checkmark-done-outline', '#0f766e', () => updateStatus(order.id, 'FINALIZADA')], ['ban-outline', '#6b7280', () => updateStatus(order.id, 'CANCELADA')], ['albums-outline', order.paid ? '#cbd5e1' : '#2563eb', () => setTab('clientes')], ['cash-outline', order.paid ? '#cbd5e1' : '#16a34a', () => setPaymentTarget({ type: 'order', id: order.id })], ['trash-outline', '#dc2626', () => deleteOrder(order.id)]]; return <View key={order.id} style={styles.tableRow}><Text style={styles.tableCell}>{order.id}</Text><Text style={styles.tableCell}>{order.date}</Text><Text style={styles.tableCell}>{house?.address ?? 'Dirección pendiente'}</Text><Text style={styles.tableCell}>{order.service}{worker ? ` · ${worker.name}` : ''}</Text><Text style={styles.tableCell}>${order.price.toFixed(2)}</Text><Text style={styles.tableCell}>{order.paid ? 'PAGADO' : order.status}</Text><Text style={styles.tableCell}>{invoice?.number ?? invoice?.id ?? '—'}</Text><View style={styles.tableNotes}><Text style={styles.notes}>{order.notes || '—'}</Text><Actions items={actions} />{!workerOnly && <View style={styles.segment}>{[{ id: '', name: 'Sin asignar' }, ...workers.filter((item) => item.active)].map((member) => <Pressable key={member.id} style={[styles.segmentButton, order.workerId === (member.id || undefined) && styles.segmentActive]} onPress={() => { void (async () => { if (await updateOrder(order.id, { crew_member_id: member.id || null })) await loadData(); })(); }}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View>}</View></View>; })}</View></ScrollView>{!visibleOrders.length && <EmptyState text="No hay órdenes agendadas para esta fecha" />}</>}
+        {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} /><TextInput accessibilityLabel="Buscar casas por dirección o cliente" style={styles.input} value={houseSearch} onChangeText={setHouseSearch} placeholder="Buscar por dirección, ciudad o cliente" />{visibleHouses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}{visibleHouses.length === 0 && <EmptyState text="No se encontraron casas con esa búsqueda" />}</>}
         {tab === 'invoices' && <><SectionTitle title="Invoices" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => setInvoiceFilter(item)}><Text style={styles.segmentText}>{item.replace('_', ' ')}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))]]} /></Card>)}</>}
         {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
         {tab === 'precios' && <AdminManagement key="precios" mode="precios" onChanged={loadData} />}
@@ -505,6 +517,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
+function normalizeSearch(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 function buildWeeklySummary(rows: OrderRow[], start: string, end: string): WeeklySummary {
   const weekRows = rows.filter((row) => String(row.service_date ?? '').slice(0, 10) >= start && String(row.service_date ?? '').slice(0, 10) <= end);
   const completed = weekRows.filter((row) => row.status === 'completed').length;
@@ -587,6 +602,10 @@ const styles = StyleSheet.create({
   textarea: { minHeight: 82, textAlignVertical: 'top' },
   label: { color: '#334155', fontWeight: '800', marginBottom: 5, marginTop: 4 },
   card: { backgroundColor: '#ffffff', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, gap: 9 },
+  tableRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#ffffff', borderBottomWidth: 1, borderColor: '#e2e8f0' },
+  tableCell: { width: 118, color: '#0f172a', padding: 10, fontSize: 12 },
+  tableHeader: { width: 118, color: '#14532d', backgroundColor: '#dcfce7', padding: 10, fontWeight: '900', fontSize: 12 },
+  tableNotes: { width: 280, padding: 8, gap: 6 },
   doneCard: { backgroundColor: '#dcfce7', borderColor: '#86efac' },
   canceledCard: { backgroundColor: '#e5e7eb', borderColor: '#cbd5e1' },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
