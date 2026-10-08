@@ -1,18 +1,6 @@
 name: iPhone build (Apple credentials required)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ios-build.yml'
-      - 'app.json'
-      - 'eas.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app/**'
-      - 'components/**'
-      - 'services/**'
-      - 'assets/**'
   workflow_dispatch:
     inputs:
       profile:
