@@ -401,7 +401,7 @@ export default function HomeScreen() {
   async function saveOrderDetails(order: Order) {
     const date = (orderDateDrafts[order.id] ?? order.date).trim();
     const notes = (orderNoteDrafts[order.id] ?? order.notes ?? '').trim();
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
       setMessage('La fecha debe tener el formato AAAA-MM-DD.');
       return;
     }
@@ -599,7 +599,6 @@ export default function HomeScreen() {
       </View>
       <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
       <Pressable style={styles.smallButton} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar cambios de la orden</Text></Pressable>
-      <Text style={styles.notes}>{order.notes || house?.notes || 'Sin notas'}</Text>
       <View style={styles.priceRow}>
         <View style={styles.grow}><Field label="Precio" value={draft} keyboardType="numeric" onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
         <Pressable style={styles.smallButton} onPress={() => void saveOrderPrice(order)}><Text style={styles.smallButtonText}>Guardar precio</Text></Pressable>
