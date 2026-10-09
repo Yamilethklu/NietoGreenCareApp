@@ -37,6 +37,8 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
+      - name: TypeScript typecheck
+        run: npm run typecheck
       - name: Publish OTA update to production channel
         run: eas update --branch production --platform all --message "${{ github.sha }}" --non-interactive
       - name: Publish OTA update to Android preview channel
