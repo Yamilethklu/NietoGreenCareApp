@@ -4,18 +4,11 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export const panelSections = [
-  { key: 'dashboard', label: 'Resumen', icon: 'grid-outline', group: 'OPERACIÓN' },
   { key: 'agenda', label: 'Agenda del día', icon: 'calendar-outline', group: 'OPERACIÓN' },
   { key: 'solicitudes', label: 'Solicitudes', icon: 'mail-unread-outline', group: 'OPERACIÓN' },
   { key: 'clientes', label: 'Historial', icon: 'people-outline', group: 'OPERACIÓN' },
-  { key: 'casas', label: 'Casas y servicios', icon: 'home-outline', group: 'OPERACIÓN' },
   { key: 'invoices', label: 'Invoices', icon: 'receipt-outline', group: 'OPERACIÓN' },
   { key: 'trabajadores', label: 'Trabajadores', icon: 'person-outline', group: 'ADMINISTRACIÓN' },
-  { key: 'precios', label: 'Precios', icon: 'pricetag-outline', group: 'ADMINISTRACIÓN' },
-  { key: 'galeria', label: 'Galería', icon: 'images-outline', group: 'SITIO WEB' },
-  { key: 'opiniones', label: 'Opiniones', icon: 'chatbubbles-outline', group: 'SITIO WEB' },
-  { key: 'qr', label: 'Código QR', icon: 'qr-code-outline', group: 'SITIO WEB' },
-  { key: 'editor', label: 'Editor del sitio', icon: 'create-outline', group: 'SITIO WEB' },
 ] as const satisfies ReadonlyArray<{key: string; label: string; icon: ComponentProps<typeof Ionicons>['name']; group: string}>;
 export type PanelTab = typeof panelSections[number]['key'];
 
