@@ -8,6 +8,11 @@ on:
       - 'components/**'
       - 'services/**'
       - 'assets/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.github/workflows/eas-update.yml'
   workflow_dispatch:
 
 permissions:
@@ -37,8 +42,10 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
-      - name: TypeScript typecheck
+      - name: TypeScript typecheck (including unused code)
         run: npm run typecheck
+      - name: Authentication regression tests
+        run: node --test tests/auth.test.cjs
       - name: Publish OTA update to production channel
         run: eas update --branch production --platform all --message "${{ github.sha }}" --non-interactive
       - name: Publish OTA update to Android preview channel
