@@ -38,4 +38,6 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
       - name: Publish OTA update to production channel
-        run: eas update --branch production --message "${{ github.sha }}" --non-interactive
+        run: eas update --branch production --platform all --message "${{ github.sha }}" --non-interactive
+      - name: Publish OTA update to Android preview channel
+        run: eas update --branch preview --platform android --message "${{ github.sha }}" --non-interactive
