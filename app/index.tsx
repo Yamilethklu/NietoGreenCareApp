@@ -76,6 +76,7 @@ export default function HomeScreen() {
   const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [editingLeadNote, setEditingLeadNote] = useState<Lead | null>(null);
+  const [acceptingLead, setAcceptingLead] = useState<Lead | null>(null);
   const [historyFocusHouseId, setHistoryFocusHouseId] = useState<string | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
@@ -137,7 +138,7 @@ export default function HomeScreen() {
       if (!active) return;
       const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
       setAuthorized(allowed);
-      if (allowed) setTab(role === 'worker' ? 'agenda' : 'dashboard');
+      if (allowed) setTab('agenda');
       else setMessage(result.error ? 'No se pudo verificar tu acceso. Intenta de nuevo.' : 'Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
     })().catch(() => active && setMessage('No se pudo verificar tu acceso. Revisa tu conexión.'));
     return () => { active = false; };
@@ -193,6 +194,7 @@ export default function HomeScreen() {
     if (!query) return houses;
     return houses.filter((house) => normalizeSearch(`${house.address} ${house.city ?? ''} ${house.client}`).includes(query));
   }, [houses, debouncedHouseSearch]);
+  const visibleLeads = useMemo(() => leads.filter((lead) => lead.status !== 'cancelled'), [leads]);
   const sortedInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [invoiceFilter, invoices]);
   const invoicePageStart = Math.min(invoicePage, Math.max(0, Math.ceil(sortedInvoices.length / 50) - 1)) * 50;
   const filteredInvoices = useMemo(() => sortedInvoices.slice(invoicePageStart, invoicePageStart + 50), [sortedInvoices, invoicePageStart]);
@@ -413,6 +415,42 @@ export default function HomeScreen() {
       setMessage(error instanceof Error ? error.message : 'No se pudo guardar la nota.');
     }
   }
+  async function acceptLeadRequest(lead: Lead, date: string, note: string, cadence: 'weekly' | 'bi_weekly') {
+    try {
+      const house = houses.find((item) => item.id === lead.id);
+      await adminRequest('operations', 'POST', {
+        action: 'mobile_house',
+        id: lead.id,
+        house: {
+          customer_name: lead.customer.trim(),
+          customer_phone: lead.phone.trim(),
+          customer_email: lead.email.trim() || null,
+          address: lead.address.trim(),
+          city: house?.city?.trim() || '',
+          zip_code: house?.zipCode?.trim() || '',
+        },
+        cadence,
+        first_date: date,
+        price: lead.finalPrice,
+        notes: note || null,
+      });
+      await saveRow('leads', lead.id, { status: 'scheduled', additional_notes: note });
+      await loadData();
+      setAcceptingLead(null);
+      setMessage('Solicitud aceptada y agregada al calendario.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo aceptar la solicitud.');
+    }
+  }
+  async function deleteLeadRequest(id: string) {
+    try {
+      await saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() });
+      setLeads((current) => current.filter((lead) => lead.id !== id));
+      setMessage('Solicitud eliminada de la lista.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la solicitud.');
+    }
+  }
   function deleteOrder(id: string) { void updateStatus(id, 'CANCELADA'); }
   async function deleteHouse(id: string) {
     try {
@@ -577,7 +615,7 @@ export default function HomeScreen() {
       <ScrollView ref={contentRef} contentContainerStyle={styles.content}>
         <View style={styles.syncNotice}><Ionicons name="cloud-outline" size={16} color="#64748b"/><Text accessibilityLiveRegion="polite" style={styles.syncText}>{message}</Text></View>
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, VISIBLE_WEEKLY_SUMMARIES).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
-        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{leads.map((lead) => { const leadOrders = orders.filter((order) => order.houseId === lead.id).sort((a, b) => a.date.localeCompare(b.date)); const nextOrder = leadOrders.find((order) => order.status !== 'CANCELADA') ?? leadOrders[0]; return <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' ? 'green' : lead.status === 'cancelled' ? 'gray' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${(nextOrder?.price ?? lead.finalPrice).toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text>{lead.ownerNotes ? <Text style={styles.ownerNote}>Nota del dueño: {lead.ownerNotes}</Text> : null}<Pressable style={styles.noteButton} onPress={() => setEditingLeadNote(lead)}><Ionicons name="document-text-outline" size={18} color="#052e16" /><Text style={styles.noteButtonText}>Notas</Text></Pressable>{nextOrder ? renderOrderOperations(nextOrder) : <Text style={styles.cardMeta}>Cuando esta solicitud tenga fecha en calendario aparecerá aquí la asignación de trabajador, precio, realizado y pago.</Text>}<Actions items={[['calendar-outline', '#2563eb', () => { void updateLeadStatus(lead.id, 'scheduled'); }], ['logo-google', '#16a34a', () => openExternalUrl(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Nieto Green Care - ${lead.customer}`)}&details=${encodeURIComponent(lead.address)}`)]]} /></Card>; })}</>}
+        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes del cotizador" />{visibleLeads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`${lead.reference} - ${lead.areaSqFt.toLocaleString()} ft²`} status={leadLabel(lead.status)} tone={lead.status === 'completed' || lead.status === 'scheduled' ? 'green' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text>{lead.ownerNotes ? <Text style={styles.ownerNote}>Nota del dueño: {lead.ownerNotes}</Text> : null}<Text style={styles.cardMeta}>Acepta la solicitud para elegir la fecha de inicio y guardar una nota corta para el historial.</Text><View style={styles.actions}><IconButton color="#16a34a" icon="checkmark-outline" onPress={() => setAcceptingLead(lead)} disabled={lead.status === 'scheduled'} /><IconButton color="#dc2626" icon="trash-outline" onPress={() => void deleteLeadRequest(lead.id)} /></View></Card>)}{!visibleLeads.length && <EmptyState text="No hay solicitudes nuevas del cotizador" />}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} />}
         {tab === 'agenda' && <><SectionTitle title="Agenda del Día" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => setSelectedDate(dateString)} />{role !== 'worker' && <><Text style={styles.label}>Filtrar por estado</Text><View style={styles.segment}>{([{ key: 'all', label: 'Todos' }, { key: 'SOLICITADO', label: 'Agendados' }, { key: 'FINALIZADA', label: 'Finalizados' }, { key: 'CANCELADA', label: 'Cancelados' }, { key: 'unpaid', label: 'Sin pagar' }] as const).map((item) => <Pressable key={item.key} style={[styles.segmentButton, orderStatusFilter === item.key && styles.segmentActive]} onPress={() => setOrderStatusFilter(item.key)}><Text style={styles.segmentText}>{item.label}</Text></Pressable>)}</View><Text style={styles.label}>Filtrar por trabajador</Text><View style={styles.segment}>{[{ id: 'all', name: 'Todos' }, { id: '', name: 'Sin asignar' }, ...workers.filter((item) => item.active)].map((member) => <Pressable key={member.id || 'none'} style={[styles.segmentButton, orderWorkerFilter === member.id && styles.segmentActive]} onPress={() => setOrderWorkerFilter(member.id)}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View></>}{visibleOrders.map((order) => { const house = getHouse(order.houseId); return <View key={order.id} style={[styles.card, order.status === 'FINALIZADA' ? styles.doneCard : order.status === 'CANCELADA' ? styles.canceledCard : undefined]}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text><Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text></View><StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} /></View>{renderOrderOperations(order, { compact: true })}</View>; })}{!visibleOrders.length && <EmptyState text="No hay órdenes agendadas para esta fecha" />}</>}
         {tab === 'casas' && <><SectionTitle title="Casas y clientes" action="Agregar nueva" onPress={() => setEditingHouse(emptyHouse())} /><Pressable style={styles.smallButton} onPress={() => void extendSchedule()}><Text style={styles.smallButtonText}>Extender agenda 12 semanas</Text></Pressable><TextInput accessibilityLabel="Buscar casas por dirección o cliente" style={styles.input} value={houseSearch} onChangeText={setHouseSearch} placeholder="Buscar por dirección, ciudad o cliente" />{visibleHouses.map((house) => <Card key={house.id} title={house.client} meta={`${house.address} - ${house.frequency} - $${house.price}`} status={house.active ? 'ACTIVA' : 'INACTIVA'} tone={house.active ? 'green' : 'gray'}><Text style={styles.notes}>{house.notes || 'Sin notas'}</Text><Actions items={[['list-outline', '#2563eb', () => createInvoice(house.id)], ['create-outline', '#eab308', () => setEditingHouse(house)], ['pause-outline', '#6b7280', () => void pausePlan(house.planId)], ['trash-outline', '#dc2626', () => deleteHouse(house.id)]]} /><Text style={styles.cardMeta}>Ordenes recientes: {orders.filter((order) => order.houseId === house.id).slice(-50).length}</Text></Card>)}{visibleHouses.length === 0 && <EmptyState text="No se encontraron casas con esa búsqueda" />}</>}
@@ -590,6 +628,7 @@ export default function HomeScreen() {
         {tab === 'editor' && <><SectionTitle title="Editor del sitio" /><Text style={styles.notes}>Guarda textos, servicios, cobertura, colores y notas en Supabase.</Text>{sections.map((section) => <Card key={section.id} title={section.section} meta={section.title}><Field label="Contenido" value={section.body} multiline disabled={savingSections[section.id]} onChangeText={(body) => { setSections((current) => current.map((item) => item.id === section.id ? { ...item, body } : item)); setSectionSaveMessages((current) => ({ ...current, [section.id]: '' })); }} /><Pressable accessibilityRole="button" disabled={savingSections[section.id]} style={[styles.smallButton, savingSections[section.id] && { opacity: 0.5 }]} onPress={() => void saveSection(section)}><Text style={styles.smallButtonText}>{savingSections[section.id] ? 'Guardando...' : 'Guardar contenido'}</Text></Pressable><Text accessibilityLiveRegion="polite" style={styles.cardMeta}>{sectionSaveMessages[section.id]}</Text></Card>)}</>}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
+      <AcceptLeadModal lead={acceptingLead} onClose={() => setAcceptingLead(null)} onSave={(lead, date, note, cadence) => void acceptLeadRequest(lead, date, note, cadence)} />
       <LeadNoteModal lead={editingLeadNote} onClose={() => setEditingLeadNote(null)} onSave={(id, note) => void saveLeadNote(id, note)} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
     </SafeAreaView>
@@ -661,6 +700,17 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
 }
 function PaymentModal({ visible, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Text style={styles.cardMeta}>Fecha: {texasDate()}</Text><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
+}
+function AcceptLeadModal({ lead, onClose, onSave }: { lead: Lead | null; onClose: () => void; onSave: (lead: Lead, date: string, note: string, cadence: 'weekly' | 'bi_weekly') => void }) {
+  const [date, setDate] = useState(texasDate());
+  const [note, setNote] = useState('');
+  const [cadence, setCadence] = useState<'weekly' | 'bi_weekly'>('bi_weekly');
+  useEffect(() => {
+    setDate(texasDate());
+    setNote(lead?.ownerNotes ?? '');
+    setCadence('bi_weekly');
+  }, [lead]);
+  return <Modal visible={!!lead} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Aceptar solicitud" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{lead ? <><Card title={lead.customer} meta={lead.address} status={`$${lead.finalPrice.toFixed(2)}`} tone="green"><Text style={styles.cardMeta}>{lead.phone} · {lead.email || 'Sin correo'}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}</Text></Card><Text style={styles.label}>Fecha de inicio</Text><Calendar current={date} markedDates={{ [date]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => setDate(dateString)} /><Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{([{ key: 'weekly', label: 'Cada 7 dias' }, { key: 'bi_weekly', label: 'Cada 14 dias' }] as const).map((item) => <Pressable key={item.key} style={[styles.segmentButton, cadence === item.key && styles.segmentActive]} onPress={() => setCadence(item.key)}><Text style={styles.segmentText}>{item.label}</Text></Pressable>)}</View><Field label="Nota para el historial" value={note} multiline onChangeText={setNote} /><Pressable style={styles.primaryButton} onPress={() => onSave(lead, date, note.trim(), cadence)}><Text style={styles.primaryText}>Guardar en calendario</Text></Pressable></> : null}</ScrollView></SafeAreaView></Modal>;
 }
 function LeadNoteModal({ lead, onClose, onSave }: { lead: Lead | null; onClose: () => void; onSave: (id: string, note: string) => void }) {
   const [note, setNote] = useState('');
