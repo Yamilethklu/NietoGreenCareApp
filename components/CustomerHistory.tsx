@@ -20,6 +20,10 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const [editing, setEditing] = useState<string | null>(null);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [orderPrices, setOrderPrices] = useState<Record<string, string>>({});
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [newOrderDate, setNewOrderDate] = useState('');
+  const [newOrderPrice, setNewOrderPrice] = useState('');
+  const [newOrderNote, setNewOrderNote] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -75,6 +79,38 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
     }
     await request('', { action: 'order', order: { id: order.id, price: value } });
   };
+  const createOneTimeOrder = async () => {
+    if (!primary) return;
+    const price = Number(newOrderPrice || primary.price || 0);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newOrderDate) || Number.isNaN(Date.parse(newOrderDate))) {
+      setMessage('La fecha debe tener el formato AAAA-MM-DD.');
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setMessage('Ingrese un precio válido.');
+      return;
+    }
+    await request('', {
+      action: 'mobile_house',
+      id: primary.id,
+      house: {
+        customer_name: primary.client.trim(),
+        customer_phone: primary.phone.trim(),
+        customer_email: primary.email.trim() || null,
+        address: primary.address.trim(),
+        city: '',
+        zip_code: '',
+      },
+      cadence: 'one_time',
+      first_date: newOrderDate,
+      price,
+      notes: newOrderNote || primary.notes || null,
+    });
+    setNewOrderOpen(false);
+    setNewOrderDate('');
+    setNewOrderPrice('');
+    setNewOrderNote('');
+  };
 
   if (customer && primary) {
     return (
@@ -86,6 +122,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
         <View style={{ marginTop: 12, borderWidth: 1, borderColor: '#dcfce7', borderRadius: 8, padding: 12, backgroundColor: '#fff', gap: 5 }}>
           <Text style={{ fontSize: 22, fontWeight: '900', color: '#14532d' }}>{primary.client}</Text>
           <Text>{primary.address}</Text>
+          <Text>{primary.phone} · {primary.email || 'Sin correo'}</Text>
           <Text>{primary.service} · {primary.frequency || 'Sin frecuencia'}</Text>
           <Text>Precio base: ${Number(primary.price ?? 0).toFixed(2)} · {primary.active === false ? 'Inactiva' : 'Activa'}</Text>
 
@@ -105,6 +142,22 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             </Pressable>
           </Link>
         </View>
+
+        <Pressable style={button} disabled={busy} onPress={() => setNewOrderOpen((open) => !open)}>
+          <Text style={{ color: '#fff', fontWeight: '800' }}>{newOrderOpen ? 'Cerrar nueva orden' : '+ Nueva Orden'}</Text>
+        </Pressable>
+
+        {newOrderOpen && (
+          <View style={{ marginTop: 10, borderWidth: 1, borderColor: '#dcfce7', borderRadius: 8, padding: 10, backgroundColor: '#fff' }}>
+            <Text style={{ fontWeight: '800' }}>Servicio extraordinario</Text>
+            <TextInput accessibilityLabel="Fecha nueva orden" style={field} placeholder="Fecha AAAA-MM-DD" value={newOrderDate} onChangeText={setNewOrderDate} />
+            <TextInput accessibilityLabel="Precio nueva orden" keyboardType="decimal-pad" style={field} placeholder="Precio" value={newOrderPrice} onChangeText={setNewOrderPrice} />
+            <TextInput accessibilityLabel="Nota nueva orden" style={field} placeholder="Nota opcional" value={newOrderNote} onChangeText={setNewOrderNote} />
+            <Pressable style={button} disabled={busy} onPress={() => void createOneTimeOrder()}>
+              <Text style={{ color: '#fff' }}>Guardar nueva orden</Text>
+            </Pressable>
+          </View>
+        )}
 
         <Text style={{ fontSize: 20, fontWeight: '800', marginTop: 16 }}>Trabajos programados e historial</Text>
 
