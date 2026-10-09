@@ -587,10 +587,31 @@ export default function HomeScreen() {
     }
   }
   async function acceptSpecialService(id: string) {
+    const lead = leads.find((item) => item.id === id);
+    if (!lead) {
+      setMessage('No se encontró la solicitud de servicio especial. Actualiza la app e inténtalo de nuevo.');
+      return;
+    }
     try {
+      await adminRequest('operations', 'POST', {
+        action: 'mobile_house',
+        id: lead.id,
+        house: {
+          customer_name: lead.customer.trim(),
+          customer_phone: lead.phone.trim(),
+          customer_email: lead.email.trim() || null,
+          address: lead.address.trim(),
+          city: '',
+          zip_code: '',
+        },
+        cadence: 'one_time',
+        first_date: selectedDate,
+        price: lead.finalPrice,
+        notes: lead.ownerNotes || null,
+      });
       await saveRow('leads', id, { status: 'scheduled' });
-      setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status: 'scheduled' } : lead));
-      setMessage('Servicio especial aceptado.');
+      await loadData();
+      setMessage(`Servicio especial aceptado y agregado a la agenda del ${selectedDate}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo aceptar el servicio especial.');
     }
