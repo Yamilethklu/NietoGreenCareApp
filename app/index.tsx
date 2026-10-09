@@ -13,7 +13,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const APP_LOGO = require('../assets/icon.png');
-const VISIBLE_WEEKLY_SUMMARIES = 6;
 
 type Status = 'SOLICITADO' | 'FINALIZADA' | 'CANCELADA';
 type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled';
@@ -24,26 +23,16 @@ type Order = { id: string; houseId: string; date: string; service: string; price
 type Invoice = { id: string; houseId: string; createdAt: string; orderIds: string[]; number?: string; total: number; paid: boolean; sentAt?: string | null };
 type Worker = { id: string; name: string; email: string; active: boolean };
 type Lead = { id: string; customer: string; phone: string; email: string; address: string; reference: string; services: string; areaSqFt: number; details: string; ownerNotes: string; gateCode?: string; status: LeadStatus; finalPrice: number };
-type Price = { id: string; name: string; minArea: number; maxArea: number; price: number };
-type Gallery = { id: string; title: string; type: 'foto' | 'video'; visible: boolean };
-type Review = { id: string; customer: string; rating: number; text: string; visible: boolean };
-type Section = { id: string; section: string; title: string; body: string; visible: boolean };
 type Role = 'admin' | 'worker' | null;
 type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
 type LeadRow = { id: string; customer_name: string | null; customer_phone: string | null; customer_email: string | null; address: string | null; reference_code: string | null; selected_services: string[] | null; area_sq_ft: number | null; details: string | null; additional_notes: string | null; gate_code: string | null; status: string | null; final_price: number | null; city: string | null; zip_code: string | null; created_at: string };
-type PricingRow = { id: string; name: string | null; min_sq_ft: number | null; max_sq_ft: number | null; price: number | null };
-type GalleryRow = { id: string; title: string | null; description: string | null; public_url: string | null; is_published: boolean | null; created_at: string };
 type WorkerRow = { id: string; full_name: string | null; email: string | null; active: boolean | null; phone: string | null };
 type PlanRow = { id: string; lead_id: string; cadence: string | null; active: boolean | null; price_per_visit: number | null; notes: string | null; created_at: string };
 type OrderRow = { id: string; lead_id: string | null; service_date: string | null; status: string | null; price: number | null; paid_amount: number | null; payment_method: string | null; crew_member_id: string | null; notes: string | null };
 type InvoiceRow = { id: string; order_id: string; invoice_number: string; issued_at: string | null; total: number | null; sent_at: string | null; created_at: string };
-type WeeklySummaryRow = { id: string; week_start: string; week_end: string; completed_orders: number | null; cancelled_orders: number | null; unpaid_orders: number | null; paid_orders: number | null; total_collected: number | null; notes: string | null };
-type SectionRow = { id: string; section: string | null; title: string | null; body: string | null; visible: boolean | null };
 
 export default function HomeScreen() {
   const [tab, setTab] = useState<Tab>('agenda');
-  const [houseSearch, setHouseSearch] = useState('');
-  const [debouncedHouseSearch, setDebouncedHouseSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const contentRef = useRef<ScrollView>(null);
   const [selectedDate, setSelectedDate] = useState(texasDate);
@@ -62,18 +51,9 @@ export default function HomeScreen() {
   const [houses, setHouses] = useState<House[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [prices, setPrices] = useState<Price[]>([]);
-  const [gallery, setGallery] = useState<Gallery[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
-  const [sectionSaveMessages, setSectionSaveMessages] = useState<Record<string, string>>({});
-  const [savingSections, setSavingSections] = useState<Record<string, boolean>>({});
-  const savingSectionsRef = useRef(new Set<string>());
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [invoicePage, setInvoicePage] = useState(0);
-  const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [editingLeadNote, setEditingLeadNote] = useState<Lead | null>(null);
   const [acceptingLead, setAcceptingLead] = useState<Lead | null>(null);
@@ -176,20 +156,6 @@ export default function HomeScreen() {
     try { setMessage(await enableDailyReminder() ? 'Recordatorio diario activado a las 6:00 a. m. del teléfono.' : 'Activa las notificaciones en los ajustes del teléfono para recibir el recordatorio.'); }
     catch { setMessage('No se pudo activar el recordatorio. Revisa los permisos del teléfono.'); }
   }
-  async function saveSection(section: Section) {
-    if (savingSectionsRef.current.has(section.id)) return;
-    savingSectionsRef.current.add(section.id);
-    setSavingSections((current) => ({ ...current, [section.id]: true }));
-    try {
-      await saveRow('site_sections', section.id, { body: section.body });
-      setSectionSaveMessages((current) => ({ ...current, [section.id]: 'Contenido guardado.' }));
-    } catch (error) {
-      setSectionSaveMessages((current) => ({ ...current, [section.id]: error instanceof Error ? error.message : 'No se pudo guardar el contenido.' }));
-    } finally {
-      savingSectionsRef.current.delete(section.id);
-      setSavingSections((current) => ({ ...current, [section.id]: false }));
-    }
-  }
   function openExternalUrl(url: string) {
     void Linking.openURL(url).catch(() => setMessage('No se pudo abrir el enlace.'));
   }
@@ -206,57 +172,12 @@ export default function HomeScreen() {
     if (orderWorkerFilter !== 'all' && order.workerId !== orderWorkerFilter) return false;
     return true;
   }).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)), [orders, requestDateFilter, orderStatusFilter, orderWorkerFilter]);
-  const visibleHouses = useMemo(() => {
-    const query = normalizeSearch(debouncedHouseSearch);
-    if (!query) return houses;
-    return houses.filter((house) => normalizeSearch(`${house.address} ${house.city ?? ''} ${house.client}`).includes(query));
-  }, [houses, debouncedHouseSearch]);
   const visibleLeads = useMemo(() => leads.filter((lead) => lead.status !== 'cancelled'), [leads]);
   const specialServiceLeads = useMemo(() => visibleLeads.filter(isSpecialServiceLead), [visibleLeads]);
   const quoteLeads = useMemo(() => visibleLeads.filter((lead) => !isSpecialServiceLead(lead)), [visibleLeads]);
   const sortedInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [invoiceFilter, invoices]);
   const invoicePageStart = Math.min(invoicePage, Math.max(0, Math.ceil(sortedInvoices.length / 50) - 1)) * 50;
   const filteredInvoices = useMemo(() => sortedInvoices.slice(invoicePageStart, invoicePageStart + 50), [sortedInvoices, invoicePageStart]);
-  const customers = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; phone: string; requests: number; completed: number; paidTotal: number }>();
-    // Invoice house IDs and mobile house IDs both use leads.id.
-    const paidByHouseId = new Map<string, number>();
-    const completedByHouse = new Map<string, number>();
-    for (const invoice of invoices) {
-      if (invoice.paid) paidByHouseId.set(invoice.houseId, (paidByHouseId.get(invoice.houseId) ?? 0) + invoice.total);
-    }
-    for (const order of orders) {
-      if (order.status === 'FINALIZADA') completedByHouse.set(order.houseId, (completedByHouse.get(order.houseId) ?? 0) + 1);
-    }
-    const paidByCustomerKey = new Map<string, number>();
-    for (const house of houses) {
-      const key = normalizePhone(house.phone) || house.id;
-      paidByCustomerKey.set(key, (paidByCustomerKey.get(key) ?? 0) + (paidByHouseId.get(house.id) ?? 0));
-    }
-    leads.forEach((lead) => {
-      const phone = normalizePhone(lead.phone);
-      const key = phone || lead.id;
-      const item = map.get(key) ?? { id: key, name: lead.customer, phone: lead.phone, requests: 0, completed: 0, paidTotal: 0 };
-      item.requests += 1;
-      if (lead.status === 'completed') item.completed += 1;
-      // The customer-key total is already aggregated across all matching houses.
-      item.paidTotal = paidByCustomerKey.get(key) ?? paidByHouseId.get(lead.id) ?? 0;
-      map.set(key, item);
-    });
-    houses.forEach((house) => {
-      const phone = normalizePhone(house.phone);
-      const key = phone || house.id;
-      if (!map.has(key)) map.set(key, { id: house.id, name: house.client, phone: house.phone, requests: 0, completed: completedByHouse.get(house.id) ?? 0, paidTotal: paidByCustomerKey.get(key) ?? paidByHouseId.get(house.id) ?? 0 });
-    });
-    return [...map.values()];
-  }, [houses, invoices, leads, orders]);
-  const metrics = {
-    income: invoices.filter((invoice) => invoice.paid).reduce((sum, invoice) => sum + invoice.total, 0),
-    completed: orders.filter((order) => order.status === 'FINALIZADA').length,
-    pending: leads.filter((lead) => lead.status === 'pending').length,
-    area: leads.reduce((sum, lead) => sum + lead.areaSqFt, 0),
-  };
-
   function getHouse(id: string) { return houses.find((house) => house.id === id); }
   async function signIn() {
     if (!supabase) return setMessage('Falta la URL o la clave pública de Supabase en esta versión de la app.');
@@ -322,21 +243,16 @@ export default function HomeScreen() {
         if ((data?.length ?? 0) < 500) return { data: rows, error: null };
       }
     }
-    const [leadRows, priceRows, galleryRows, reviewRow, workerRows, planRows, orderRows, invoiceRows, sectionRows, weeklyRows] = await Promise.all([
+    const [leadRows, workerRows, planRows, orderRows, invoiceRows] = await Promise.all([
       readAll<LeadRow>('leads', 'created_at', 'id,customer_name,customer_phone,customer_email,address,reference_code,selected_services,area_sq_ft,details,additional_notes,gate_code,status,final_price,city,zip_code,created_at', false),
-      readAll<PricingRow>('pricing_rules', 'min_sq_ft', 'id,name,min_sq_ft,max_sq_ft,price', true),
-      readAll<GalleryRow>('gallery', 'created_at', 'id,title,description,public_url,is_published,created_at', false),
-      supabase.from('app_settings').select('value').eq('key', 'customer_reviews').maybeSingle(),
       readAll<WorkerRow>('crew_members', 'full_name', 'id,full_name,email,active,phone', true),
       readAll<PlanRow>('service_plans', 'created_at', 'id,lead_id,cadence,active,price_per_visit,notes,created_at', false),
       readAll<OrderRow>('work_orders', 'service_date', 'id,lead_id,service_date,status,price,paid_amount,payment_method,crew_member_id,notes', false),
       readAll<InvoiceRow>('work_invoices', 'created_at', 'id,order_id,invoice_number,issued_at,total,sent_at,created_at', false),
-      supabase.from('site_sections').select('id,section,title,body,visible').returns<SectionRow[]>().order('section').limit(100),
-      supabase.from('weekly_summaries').select('id,week_start,week_end,completed_orders,cancelled_orders,unpaid_orders,paid_orders,total_collected,notes').returns<WeeklySummaryRow[]>().order('week_start', { ascending: false }).limit(VISIBLE_WEEKLY_SUMMARIES),
     ]);
     const loadError = [leadRows, workerRows, planRows, orderRows, invoiceRows].find(result => result.error)?.error;
     if (loadError) throw new Error(`No se pudo cargar el historial completo: ${loadError.message}`);
-    const pendingSections = [['Precios',priceRows],['Galería',galleryRows],['Opiniones',reviewRow],['Editor',sectionRows],['Resúmenes',weeklyRows]].filter(([,result]) => typeof result !== 'string' && result.error).map(([name]) => name);
+    const pendingSections: string[] = [];
     const leadData = leadRows.data ?? [];
     const planByLead = new Map<string, PlanRow>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
@@ -344,19 +260,6 @@ export default function HomeScreen() {
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row) => [String(row.order_id), row]));
     setLeads(leadData.map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? '', ownerNotes: row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status ?? undefined), finalPrice: Number(row.final_price ?? 0) })));
     setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? '', details: row.details ?? '' }; }));
-    if (priceRows.data) setPrices(priceRows.data.map((row) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
-    if (galleryRows.data) setGallery(galleryRows.data.map((row) => ({ id: row.id, title: row.title ?? row.description ?? 'Galeria', type: String(row.public_url ?? '').match(/\.(mp4|mov|webm)(\?|$)/i) ? 'video' : 'foto', visible: Boolean(row.is_published ?? true) })));
-    if (!reviewRow.error) {
-      const reviewSettings: unknown = reviewRow.data?.value;
-      const reviewItems = isRecord(reviewSettings) && Array.isArray(reviewSettings.items) ? reviewSettings.items.filter(isRecord) : [];
-      setReviews(reviewItems.map((row) => ({
-        id: String(row.id ?? ''),
-        customer: String(row.customer_name ?? 'Cliente'),
-        rating: Number(row.rating ?? 5),
-        text: String(row.comment ?? ''),
-        visible: Boolean(row.approved ?? true),
-      })));
-    }
     if (workerRows.data) setWorkers(workerRows.data.map((row) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
     if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
     if (invoiceRows.data) {
@@ -364,8 +267,6 @@ export default function HomeScreen() {
       for(const row of invoiceRows.data){const key=String(row.invoice_number).startsWith('NGC-G-')?String(row.invoice_number).split('/')[0]:row.invoice_number;groups.set(key,[...(groups.get(key)??[]),row]);}
       setInvoices(Array.from(groups.entries()).map(([key,rows])=>{const row=rows[0];const first=ordersById.get(String(row.order_id));return {id:row.id,houseId:first?.lead_id??'',createdAt:String(row.issued_at??texasDate()).slice(0,10),orderIds:rows.map(item=>item.order_id),number:key,total:rows.reduce((sum,item)=>sum+Number(item.total),0),paid:rows.every(item=>Number(ordersById.get(String(item.order_id))?.paid_amount??0)>=Number(item.total)),sentAt:rows.find(item=>item.sent_at)?.sent_at};}));
     }
-    if (sectionRows.data) setSections(sectionRows.data.map((row) => ({ id: row.id, section: row.section ?? 'Seccion', title: row.title ?? row.section ?? 'Contenido', body: row.body ?? '', visible: Boolean(row.visible ?? true) })));
-    if (weeklyRows.data) setWeeklySummaries(weeklyRows.data.map((row) => ({ id: row.id, weekStart: row.week_start, weekEnd: row.week_end, completed: Number(row.completed_orders ?? 0), cancelled: Number(row.cancelled_orders ?? 0), unpaid: Number(row.unpaid_orders ?? 0), paid: Number(row.paid_orders ?? 0), total: Number(row.total_collected ?? 0), notes: row.notes ?? '' })));
     const summarySaved = await ensureCurrentWeeklySummary(orderRows.data ?? []);
     if (!summarySaved && !pendingSections.includes('Resúmenes')) pendingSections.push('Resúmenes');
     setMessage(pendingSections.length ? `Sincronización pendiente: ${pendingSections.join(', ')}. Pulsa sincronizar para reintentar.` : 'Actualizado con el sitio web');
@@ -428,14 +329,6 @@ export default function HomeScreen() {
       await loadData();
       setEditingOrderId(null);
       setMessage('Fecha y notas de la orden actualizadas.');
-    }
-  }
-  async function updateLeadStatus(id: string, status: LeadStatus) {
-    try {
-      await saveRow('leads', id, { status });
-      setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la solicitud.');
     }
   }
   async function saveLeadNote(id: string, note: string) {
@@ -505,18 +398,6 @@ export default function HomeScreen() {
       })() },
     ]);
   }
-  async function deleteHouse(id: string) {
-    try {
-      const house = houses.find((item) => item.id === id);
-      if (house?.planId) await adminRequest('operations', 'POST', { action: 'plan_update', id: house.planId, changes: { active: false } });
-      await saveRow('leads', id, { status: 'cancelled', cancelled_at: new Date().toISOString() });
-      setHouses((current) => current.filter((house) => house.id !== id));
-      setOrders((current) => current.filter((order) => order.houseId !== id));
-      setMessage('Casa cancelada y visitas futuras pausadas.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la casa.');
-    }
-  }
   async function saveHouse(house: House) {
     try {
       const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Cada 8 dias' ? 'every_8_days' : house.frequency === 'Cada 15 dias' ? 'every_15_days' : house.frequency === 'Una vez' ? 'one_time' : null;
@@ -524,11 +405,6 @@ export default function HomeScreen() {
       await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:{customer_name:house.client.trim(),customer_phone:house.phone.trim(),customer_email:house.email.trim()||null,address:house.address.trim(),city:house.city?.trim()||'',zip_code:house.zipCode?.trim()||''},cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
-  }
-  function createInvoice(houseId: string) {
-    setHistoryFocusHouseId(houseId);
-    setTab('clientes');
-    setMessage('Busque al cliente y seleccione las fechas para generar una sola factura.');
   }
   function openCustomerHistory(houseId?: string) {
     if (houseId) setHistoryFocusHouseId(houseId);
@@ -617,25 +493,6 @@ export default function HomeScreen() {
       setMessage(error instanceof Error ? error.message : 'No se pudo aceptar el servicio especial.');
     }
   }
-  async function extendSchedule() {
-    try {
-      await adminRequest('operations', 'POST', { action: 'extend' });
-      await loadData();
-      setMessage('Agenda extendida 12 semanas como en el panel web.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo extender la agenda.');
-    }
-  }
-  async function pausePlan(planId?: string) {
-    if (!planId) return setMessage('Esta casa no tiene un plan activo para pausar.');
-    try {
-      await adminRequest('operations', 'POST', { action: 'plan_update', id: planId, changes: { active: false } });
-      await loadData();
-      setMessage('Plan pausado y visitas futuras canceladas.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo pausar el plan.');
-    }
-  }
   async function deleteInvoice(invoiceId: string) {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return;
@@ -689,32 +546,6 @@ export default function HomeScreen() {
     if (!email) return false;
     const worker = workers.find((item) => item.id === order.workerId);
     return worker?.email.toLowerCase() === email.toLowerCase();
-  }
-  function renderOrderOperations(order: Order, options: { compact?: boolean } = {}) {
-    const workerOnly = role === 'worker';
-    const draft = priceDraft(order);
-    return <View style={styles.orderOps}>
-      <Text style={styles.cardMeta}>{options.compact ? order.service : `Fecha: ${order.date} · ${order.service}`}</Text>
-      {!workerOnly && editingOrderId === order.id && <>
-        <View style={styles.priceRow}>
-          <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
-        </View>
-        <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
-        <Pressable style={styles.smallButton} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar cambios de la orden</Text></Pressable>
-      </>}
-      <View style={styles.priceRow}>
-        <View style={styles.grow}><Field label="Precio" value={draft} keyboardType="numeric" onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
-        <Pressable style={styles.smallButton} onPress={() => void saveOrderPrice(order)}><Text style={styles.smallButtonText}>Guardar precio</Text></Pressable>
-      </View>
-      {!workerOnly && <View><Text style={styles.label}>Trabajador</Text><View style={styles.segment}>{[{ id: '', name: 'Sin asignar' }, ...workers.filter((item) => item.active)].map((member) => <Pressable key={member.id || 'none'} style={[styles.segmentButton, order.workerId === (member.id || undefined) && styles.segmentActive]} onPress={() => { void (async () => { if (await updateOrder(order.id, { crew_member_id: member.id || null })) await loadData(); })(); }}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View></View>}
-      <View style={styles.actionLabels}>
-        <Pressable style={[styles.actionButton, styles.doneAction]} onPress={() => Alert.alert('Estado del trabajo', 'Selecciona el estado', [{ text: 'Realizado', onPress: () => void updateStatus(order.id, 'FINALIZADA') }, { text: 'Cancelado', style: 'destructive', onPress: () => void updateStatus(order.id, 'CANCELADA') }, { text: 'Cerrar', style: 'cancel' }])}><Ionicons name="checkmark-done-outline" size={18} color="#052e16" /><Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado ▾' : order.status === 'CANCELADA' ? 'Cancelado ▾' : 'Estado ▾'}</Text></Pressable>
-        <Pressable style={[styles.actionButton, { backgroundColor: order.paid ? '#fde047' : '#facc15' }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) setPaymentTarget({ type: 'order', id: order.id }); } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}><Ionicons name="cash-outline" size={18} color="#422006" /><Text style={styles.actionText}>{order.paid ? 'Pagado ▾' : 'Pendiente ▾'}</Text></Pressable>
-        {!workerOnly && <Pressable style={[styles.actionButton, { backgroundColor: '#eab308' }]} onPress={() => setEditingOrderId((current) => current === order.id ? null : order.id)}><Ionicons name="create-outline" size={18} color="#422006" /><Text style={styles.actionText}>{editingOrderId === order.id ? 'Cerrar edición' : 'Editar'}</Text></Pressable>}
-        <Pressable style={[styles.actionButton, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}><Ionicons name="albums-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Historial</Text></Pressable>
-        {!workerOnly && <Pressable style={[styles.actionButton, { backgroundColor: '#dc2626' }]} onPress={() => deleteOrder(order.id)}><Ionicons name="trash-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Eliminar</Text></Pressable>}
-      </View>
-    </View>;
   }
   function orderTone(order: Order): 'green' | 'gray' | undefined {
     return order.status === 'FINALIZADA' ? 'green' : order.status === 'CANCELADA' ? 'gray' : undefined;
@@ -799,7 +630,6 @@ export default function HomeScreen() {
         console.warn('No se pudo guardar el resumen semanal.', error);
         return false;
       }
-      setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
       return true;
     } catch (error) {
       console.warn('No se pudo guardar el resumen semanal.', error);
@@ -858,7 +688,6 @@ export default function HomeScreen() {
   );
 }
 
-function emptyHouse(): House { return { id: `h${Date.now()}`, client: '', address: '', phone: '', email: '', frequency: 'Cada 14 dias', service: 'Corte de yarda', price: 0, active: true, notes: '' }; }
 async function applyAvailableUpdate() {
   try {
     if (!Updates.isEnabled) return;
@@ -885,14 +714,6 @@ function weekRange(date = texasDate()) {
   endDate.setUTCDate(startDate.getUTCDate() + 6);
   return { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) };
 }
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-function isSpecialServiceLead(lead: Lead) {
-  const value = normalizeSearch(`${lead.services} ${lead.details}`);
-  if (!value.trim()) return false;
-  return !/(weekly_biweekly_lawn_service|corte|cesped|lawn|yard)/.test(value);
-}
 function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
 function normalizeSearch(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -910,7 +731,6 @@ function buildWeeklySummary(rows: OrderRow[], start: string, end: string): Weekl
 function SectionTitle({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
   return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{action && <Pressable style={styles.smallButton} onPress={onPress}><Text style={styles.smallButtonText}>{action}</Text></Pressable>}</View>;
 }
-function Metric({ label, value }: { label: string; value: string }) { return <View style={styles.metricCard}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>; }
 function Card({ title, meta, status, tone = 'white', children }: { title: string; meta?: string; status?: string; tone?: 'green' | 'gray' | 'red' | 'white'; children?: ReactNode }) {
   return <View style={styles.card}><View style={styles.cardHeader}><View style={styles.grow}><Text style={styles.cardTitle}>{title}</Text>{meta ? <Text style={styles.cardMeta}>{meta}</Text> : null}</View>{status ? <StatusPill label={status} tone={tone} /> : null}</View>{children}</View>;
 }
