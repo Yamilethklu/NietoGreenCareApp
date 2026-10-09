@@ -82,6 +82,8 @@ export default function HomeScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
   const [orderPriceDrafts, setOrderPriceDrafts] = useState<Record<string, string>>({});
+  const [orderDateDrafts, setOrderDateDrafts] = useState<Record<string, string>>({});
+  const [orderNoteDrafts, setOrderNoteDrafts] = useState<Record<string, string>>({});
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Status | 'unpaid'>('all');
   const [orderWorkerFilter, setOrderWorkerFilter] = useState('all');
 
@@ -396,6 +398,20 @@ export default function HomeScreen() {
       setMessage('Precio actualizado.');
     }
   }
+  async function saveOrderDetails(order: Order) {
+    const date = (orderDateDrafts[order.id] ?? order.date).trim();
+    const notes = (orderNoteDrafts[order.id] ?? order.notes ?? '').trim();
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+      setMessage('La fecha debe tener el formato AAAA-MM-DD.');
+      return;
+    }
+    if (await updateOrder(order.id, { service_date: date, notes: notes || null })) {
+      setOrderDateDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
+      setOrderNoteDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
+      await loadData();
+      setMessage('Fecha y notas de la orden actualizadas.');
+    }
+  }
   async function updateLeadStatus(id: string, status: LeadStatus) {
     try {
       await saveRow('leads', id, { status });
@@ -577,7 +593,12 @@ export default function HomeScreen() {
     const workerOnly = role === 'worker';
     const draft = priceDraft(order);
     return <View style={styles.orderOps}>
-      {!options.compact ? <Text style={styles.cardMeta}>Fecha: {order.date} · {order.service}</Text> : null}
+      <Text style={styles.cardMeta}>{order.service}</Text>
+      <View style={styles.priceRow}>
+        <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
+      </View>
+      <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
+      <Pressable style={styles.smallButton} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar cambios de la orden</Text></Pressable>
       <Text style={styles.notes}>{order.notes || house?.notes || 'Sin notas'}</Text>
       <View style={styles.priceRow}>
         <View style={styles.grow}><Field label="Precio" value={draft} keyboardType="numeric" onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
