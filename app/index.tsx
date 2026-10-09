@@ -572,7 +572,7 @@ export default function HomeScreen() {
 
   async function registerPayment() {
     if (!paymentTarget) return;
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(paymentDate) || paymentDate > texasDate()) { setMessage('Seleccione una fecha de pago válida, no futura.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || paymentDate > texasDate()) { setMessage('Seleccione una fecha de pago válida, no futura.'); return; }
     if(paymentTarget.type === 'invoice'){
       if(!session)return;
       try{
