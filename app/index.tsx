@@ -79,10 +79,6 @@ export default function HomeScreen() {
   const [manualPrice, setManualPrice] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedHouseSearch(houseSearch), 250);
-    return () => clearTimeout(timer);
-  }, [houseSearch]);
-  useEffect(() => {
     if (!supabase) return;
     let active = true;
     let authEventReceived = false;
@@ -713,6 +709,9 @@ function weekRange(date = texasDate()) {
   const endDate = new Date(startDate);
   endDate.setUTCDate(startDate.getUTCDate() + 6);
   return { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) };
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
 function normalizeSearch(value: string) {
