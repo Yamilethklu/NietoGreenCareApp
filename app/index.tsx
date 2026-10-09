@@ -89,6 +89,14 @@ export default function HomeScreen() {
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Status | 'unpaid'>('all');
   const [orderWorkerFilter, setOrderWorkerFilter] = useState('all');
   const [requestDateFilter, setRequestDateFilter] = useState<string | null>(null);
+  const [manualName, setManualName] = useState('');
+  const [manualDate, setManualDate] = useState(texasDate());
+  const [manualAddress, setManualAddress] = useState('');
+  const [manualService, setManualService] = useState('Yard');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
+  const [manualNote, setManualNote] = useState('');
+  const [manualPrice, setManualPrice] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedHouseSearch(houseSearch), 250);
@@ -204,6 +212,8 @@ export default function HomeScreen() {
     return houses.filter((house) => normalizeSearch(`${house.address} ${house.city ?? ''} ${house.client}`).includes(query));
   }, [houses, debouncedHouseSearch]);
   const visibleLeads = useMemo(() => leads.filter((lead) => lead.status !== 'cancelled'), [leads]);
+  const specialServiceLeads = useMemo(() => visibleLeads.filter(isSpecialServiceLead), [visibleLeads]);
+  const quoteLeads = useMemo(() => visibleLeads.filter((lead) => !isSpecialServiceLead(lead)), [visibleLeads]);
   const sortedInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [invoiceFilter, invoices]);
   const invoicePageStart = Math.min(invoicePage, Math.max(0, Math.ceil(sortedInvoices.length / 50) - 1)) * 50;
   const filteredInvoices = useMemo(() => sortedInvoices.slice(invoicePageStart, invoicePageStart + 50), [sortedInvoices, invoicePageStart]);
@@ -524,6 +534,67 @@ export default function HomeScreen() {
     if (houseId) setHistoryFocusHouseId(houseId);
     setTab('clientes');
   }
+  function clearManualRequest() {
+    setManualName('');
+    setManualDate(texasDate());
+    setManualAddress('');
+    setManualService('Yard');
+    setManualPhone('');
+    setManualEmail('');
+    setManualNote('');
+    setManualPrice('');
+  }
+  async function saveManualRequest() {
+    const name = manualName.trim();
+    const date = manualDate.trim();
+    const address = manualAddress.trim();
+    const service = manualService.trim();
+    const phone = manualPhone.trim();
+    const email = manualEmail.trim();
+    const note = manualNote.trim();
+    const price = Number(manualPrice);
+    if (name.length < 2 || address.length < 5 || service.length < 2 || phone.length < 7) return setMessage('Complete nombre, fecha, dirección, servicio y teléfono.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) return setMessage('La fecha debe tener el formato AAAA-MM-DD.');
+    if (!Number.isFinite(price) || price < 0) return setMessage('Ingrese un precio válido.');
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) return setMessage('Ingrese un correo válido o deje el campo vacío.');
+    try {
+      const existing = houses.find((house) => normalizeSearch(house.client.trim()) === normalizeSearch(name));
+      const result = await adminRequest('operations', 'POST', {
+        action: 'mobile_house',
+        id: null,
+        house: {
+          customer_name: name,
+          customer_phone: existing?.phone || phone,
+          customer_email: existing?.email || email || null,
+          address,
+          city: existing?.city || 'Directo',
+          zip_code: existing?.zipCode && /^\d{5}$/.test(existing.zipCode) ? existing.zipCode : '00000',
+        },
+        cadence: 'one_time',
+        first_date: date,
+        price,
+        notes: note || null,
+      });
+      const savedId = isRecord(result) && typeof result.id === 'string' ? result.id : undefined;
+      if (savedId) await saveRow('leads', savedId, { selected_services: [service], details: service, additional_notes: note || null });
+      await loadData();
+      clearManualRequest();
+      setSelectedDate(date);
+      setTab('agenda');
+      setMessage(existing ? 'Solicitud agregada al historial del cliente y a la agenda.' : 'Cliente nuevo creado y solicitud agregada a la agenda.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo guardar la nueva solicitud.');
+    }
+  }
+  async function acceptSpecialService(id: string) {
+    try {
+      await saveRow('leads', id, { status: 'scheduled' });
+      setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status: 'scheduled' } : lead));
+      setMessage('Servicio especial aceptado.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo aceptar el servicio especial.');
+    }
+  }
   async function extendSchedule() {
     try {
       await adminRequest('operations', 'POST', { action: 'extend' });
@@ -749,7 +820,9 @@ export default function HomeScreen() {
       <PanelNavigation open={menuOpen} worker={role==='worker'} active={tab} onClose={()=>setMenuOpen(false)} onSelect={next=>{setTab(next);contentRef.current?.scrollTo({y:0,animated:false});}} onWebsite={()=>openExternalUrl(siteUrl)} onSignOut={()=>void signOut()} onReminder={()=>void enableNotifications()} />
       <ScrollView ref={contentRef} contentContainerStyle={styles.content}>
         <View style={styles.syncNotice}><Ionicons name="cloud-outline" size={16} color="#64748b"/><Text accessibilityLiveRegion="polite" style={styles.syncText}>{message}</Text></View>
-        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes" action={requestDateFilter ? 'Quitar filtro' : undefined} onPress={() => setRequestDateFilter(null)} /><Text style={styles.label}>Filtrar por fecha</Text><Calendar current={requestDateFilter ?? selectedDate} markedDates={requestDateFilter ? { [requestDateFilter]: { selected: true, selectedColor: '#15803d' } } : {}} onDayPress={({ dateString }) => setRequestDateFilter(dateString)} /><Text style={styles.label}>Filtrar por estatus</Text><View style={styles.segment}>{([{ key: 'all', label: 'Todas' }, { key: 'SOLICITADO', label: 'Solicitadas' }, { key: 'FINALIZADA', label: 'Finalizadas' }, { key: 'CANCELADA', label: 'Canceladas' }, { key: 'unpaid', label: 'No pagadas' }] as const).map((item) => <Pressable key={item.key} style={[styles.segmentButton, orderStatusFilter === item.key && styles.segmentActive]} onPress={() => setOrderStatusFilter(item.key)}><Text style={styles.segmentText}>{item.label}</Text></Pressable>)}</View><Text style={styles.label}>Filtrar por trabajador</Text><View style={styles.segment}>{[{ id: 'all', name: 'Todos' }, { id: '', name: 'Sin asignar' }, ...workers.filter((item) => item.active)].map((member) => <Pressable key={member.id || 'none'} style={[styles.segmentButton, orderWorkerFilter === member.id && styles.segmentActive]} onPress={() => setOrderWorkerFilter(member.id)}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View>{visibleLeads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`Nueva cotización ${lead.reference}`} status={leadLabel(lead.status)} tone={lead.status === 'completed' || lead.status === 'scheduled' ? 'green' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text>{lead.ownerNotes ? <Text style={styles.ownerNote}>Nota del dueño: {lead.ownerNotes}</Text> : null}<Text style={styles.cardMeta}>Acepta la solicitud para elegir la fecha de inicio y guardar una nota corta para el historial.</Text><View style={styles.actions}><IconButton color="#16a34a" icon="checkmark-outline" onPress={() => setAcceptingLead(lead)} disabled={lead.status === 'scheduled'} /><IconButton color="#dc2626" icon="trash-outline" onPress={() => void deleteLeadRequest(lead.id)} /></View></Card>)}{visibleRequestOrders.map((order) => renderSolicitudOrder(order))}{!visibleLeads.length && !visibleRequestOrders.length && <EmptyState text="No hay solicitudes para este filtro" />}</>}
+        {tab === 'nueva' && <><SectionTitle title="Nueva Solicitud" /><Card title="Registrar trabajo directo" meta="Para clientes que contactan al dueño directamente"><Field label="Nombre del cliente" value={manualName} onChangeText={setManualName} /><Field label="Fecha del servicio (AAAA-MM-DD)" value={manualDate} onChangeText={setManualDate} /><Field label="Dirección de la propiedad" value={manualAddress} onChangeText={setManualAddress} /><Field label="Servicio a realizar" value={manualService} onChangeText={setManualService} /><Field label="Teléfono de contacto" value={manualPhone} onChangeText={setManualPhone} /><Field label="Correo electrónico (opcional)" value={manualEmail} onChangeText={setManualEmail} /><Field label="Nota del dueño" value={manualNote} multiline onChangeText={setManualNote} /><Field label="Precio ajustable" value={manualPrice} keyboardType="numeric" onChangeText={setManualPrice} /><Pressable style={styles.primaryButton} onPress={() => void saveManualRequest()}><Text style={styles.primaryText}>Guardar solicitud</Text></Pressable></Card></>}
+        {tab === 'solicitudes' && <><SectionTitle title="Solicitudes" action={requestDateFilter ? 'Quitar filtro' : undefined} onPress={() => setRequestDateFilter(null)} /><Text style={styles.label}>Filtrar por fecha</Text><Calendar current={requestDateFilter ?? selectedDate} markedDates={requestDateFilter ? { [requestDateFilter]: { selected: true, selectedColor: '#15803d' } } : {}} onDayPress={({ dateString }) => setRequestDateFilter(dateString)} /><Text style={styles.label}>Filtrar por estatus</Text><View style={styles.segment}>{([{ key: 'all', label: 'Todas' }, { key: 'SOLICITADO', label: 'Solicitadas' }, { key: 'FINALIZADA', label: 'Finalizadas' }, { key: 'CANCELADA', label: 'Canceladas' }, { key: 'unpaid', label: 'No pagadas' }] as const).map((item) => <Pressable key={item.key} style={[styles.segmentButton, orderStatusFilter === item.key && styles.segmentActive]} onPress={() => setOrderStatusFilter(item.key)}><Text style={styles.segmentText}>{item.label}</Text></Pressable>)}</View><Text style={styles.label}>Filtrar por trabajador</Text><View style={styles.segment}>{[{ id: 'all', name: 'Todos' }, { id: '', name: 'Sin asignar' }, ...workers.filter((item) => item.active)].map((member) => <Pressable key={member.id || 'none'} style={[styles.segmentButton, orderWorkerFilter === member.id && styles.segmentActive]} onPress={() => setOrderWorkerFilter(member.id)}><Text style={styles.segmentText}>{member.name}</Text></Pressable>)}</View>{quoteLeads.map((lead) => <Card key={lead.id} title={lead.customer} meta={`Nueva cotización ${lead.reference}`} status={leadLabel(lead.status)} tone={lead.status === 'completed' || lead.status === 'scheduled' ? 'green' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}{lead.gateCode ? ` Codigo: ${lead.gateCode}` : ''}</Text>{lead.ownerNotes ? <Text style={styles.ownerNote}>Nota del dueño: {lead.ownerNotes}</Text> : null}<Text style={styles.cardMeta}>Acepta la solicitud para elegir la fecha de inicio y guardar una nota corta para el historial.</Text><View style={styles.actions}><IconButton color="#16a34a" icon="checkmark-outline" onPress={() => setAcceptingLead(lead)} disabled={lead.status === 'scheduled'} /><IconButton color="#dc2626" icon="trash-outline" onPress={() => void deleteLeadRequest(lead.id)} /></View></Card>)}{visibleRequestOrders.map((order) => renderSolicitudOrder(order))}{!quoteLeads.length && !visibleRequestOrders.length && <EmptyState text="No hay solicitudes para este filtro" />}</>}
+        {tab === 'especiales' && <><SectionTitle title="Servicio Especial" /><Text style={styles.cardMeta}>Solicitudes de servicios especiales recibidas desde el sitio web o contacto directo.</Text>{specialServiceLeads.map((lead) => <Card key={lead.id} title={lead.customer} meta={lead.reference} status={lead.status === 'scheduled' ? 'ACEPTADA' : leadLabel(lead.status)} tone={lead.status === 'scheduled' || lead.status === 'completed' ? 'green' : 'white'}><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.cardMeta}>{lead.phone} · {lead.email || 'Sin correo'}</Text><Text style={styles.notes}>{lead.services}. {lead.details || 'Sin detalles adicionales'}</Text>{lead.ownerNotes ? <Text style={styles.ownerNote}>Nota del dueño: {lead.ownerNotes}</Text> : null}<View style={styles.actionLabels}><Pressable style={[styles.actionButton, styles.doneAction]} disabled={lead.status === 'scheduled'} onPress={() => void acceptSpecialService(lead.id)}><Ionicons name="checkmark-outline" size={18} color="#052e16" /><Text style={styles.actionText}>{lead.status === 'scheduled' ? 'Aceptada' : 'Aceptada'}</Text></Pressable><Pressable style={[styles.actionButton, { backgroundColor: '#dc2626' }]} onPress={() => void deleteLeadRequest(lead.id)}><Ionicons name="trash-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Eliminar</Text></Pressable></View></Card>)}{!specialServiceLeads.length && <EmptyState text="No hay servicios especiales pendientes" />}</>}
         {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} />}
         {tab === 'agenda' && <><SectionTitle title="Agenda del Día" action="Hoy" onPress={() => setSelectedDate(texasDate())} /><Text style={styles.cardMeta}>Trabajos programados para {selectedDate}</Text>{visibleOrders.map((order) => renderAgendaOrder(order))}{!visibleOrders.length && <EmptyState text="No hay trabajos agendados para hoy" />}</>}
         {tab === 'invoices' && <><SectionTitle title="Facturas y pagos" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => { setInvoiceFilter(item); setInvoicePage(0); }}><Text style={styles.segmentText}>{item === 'todos' ? 'Todas' : item === 'pagado' ? 'Pagadas' : 'Sin pagar'}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : invoice.sentAt ? 'ENVIADA' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['send-outline', invoice.sentAt ? '#cbd5e1' : '#0f766e', () => void sendInvoice(invoice.id), Boolean(invoice.sentAt)], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => void deleteInvoice(invoice.id), Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)]]} /></Card>)}{sortedInvoices.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 16 }}><Pressable accessibilityRole="button" disabled={invoicePageStart === 0} style={[styles.smallButton, invoicePageStart === 0 && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => Math.max(0, page - 1))}><Text style={styles.smallButtonText}>Más recientes</Text></Pressable><Text style={styles.cardMeta}>{invoicePageStart + 1}–{Math.min(invoicePageStart + 50, sortedInvoices.length)} de {sortedInvoices.length}</Text><Pressable accessibilityRole="button" disabled={invoicePageStart + 50 >= sortedInvoices.length} style={[styles.smallButton, invoicePageStart + 50 >= sortedInvoices.length && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => page + 1)}><Text style={styles.smallButtonText}>Anteriores</Text></Pressable></View>}{!filteredInvoices.length && <EmptyState text="No hay facturas para este filtro." />}</>}
@@ -792,6 +865,11 @@ function weekRange(date = texasDate()) {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isSpecialServiceLead(lead: Lead) {
+  const value = normalizeSearch(`${lead.services} ${lead.details}`);
+  if (!value.trim()) return false;
+  return !/(weekly_biweekly_lawn_service|corte|cesped|lawn|yard)/.test(value);
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
 function normalizeSearch(value: string) {
