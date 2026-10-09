@@ -572,6 +572,7 @@ export default function HomeScreen() {
 
   async function registerPayment() {
     if (!paymentTarget) return;
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(paymentDate) || paymentDate > texasDate()) { setMessage('Seleccione una fecha de pago válida, no futura.'); return; }
     if(paymentTarget.type === 'invoice'){
       if(!session)return;
       try{
@@ -582,7 +583,6 @@ export default function HomeScreen() {
       return;
     }
     const order = orders.find(item => item.id === paymentTarget.id);
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(paymentDate) || paymentDate > texasDate()) { setMessage('Seleccione una fecha de pago válida, no futura.'); return; }
     if (!order || !(await updateOrder(order.id, { paid_amount: order.price, payment_method: dbPay(paymentMethod), paid_at: `${paymentDate}T12:00:00.000Z`, notes: paymentNote || order.notes || null }))) return;
     await loadData();
     setPaymentTarget(null); setPaymentNote('');
