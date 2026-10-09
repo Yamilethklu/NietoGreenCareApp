@@ -37,7 +37,9 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const related = houses.filter((house) => (phone(house.phone) || house.id) === customer);
   const ids = new Set(related.map((house) => house.id));
   const primary = related[0];
-  const history = orders.filter((order) => ids.has(order.houseId)).sort((a, b) => a.date.localeCompare(b.date));
+  const history = orders.filter((order) => ids.has(order.houseId)).sort((a, b) => b.date.localeCompare(a.date));
+  const [historyPage, setHistoryPage] = useState(0);
+  const visibleHistory = history.slice(historyPage * 50, historyPage * 50 + 50);
   const selectedCount = Object.keys(selected).length;
   const totalSelected = Object.values(selected).reduce((sum, value) => sum + Number(value || 0), 0);
 
@@ -106,7 +108,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
 
         <Text style={{ fontSize: 20, fontWeight: '800', marginTop: 16 }}>Trabajos programados e historial</Text>
 
-        {history.map((order) => {
+        {visibleHistory.map((order) => {
           const pending = order.paidAmount < order.price;
           const eligible = pending && !order.invoiceId;
           const balance = Math.max(0, order.price - order.paidAmount);
@@ -139,6 +141,18 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             </View>
           );
         })}
+
+        {history.length > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+            <Pressable accessibilityRole="button" disabled={historyPage === 0} style={[button, { backgroundColor: historyPage === 0 ? '#cbd5e1' : '#475569', flex: 1 }]} onPress={() => setHistoryPage((page) => Math.max(0, page - 1))}>
+              <Text style={{ color: '#fff', textAlign: 'center' }}>Más recientes</Text>
+            </Pressable>
+            <Text style={{ color: '#475569' }}>{historyPage * 50 + 1}–{Math.min((historyPage + 1) * 50, history.length)} de {history.length}</Text>
+            <Pressable accessibilityRole="button" disabled={(historyPage + 1) * 50 >= history.length} style={[button, { backgroundColor: (historyPage + 1) * 50 >= history.length ? '#cbd5e1' : '#475569', flex: 1 }]} onPress={() => setHistoryPage((page) => Math.min(Math.ceil(history.length / 50) - 1, page + 1))}>
+              <Text style={{ color: '#fff', textAlign: 'center' }}>Anteriores</Text>
+            </Pressable>
+          </View>
+        )}
 
         {!history.length && <Text style={{ color: '#64748b', marginTop: 8 }}>No hay trabajos programados para este cliente.</Text>}
 
