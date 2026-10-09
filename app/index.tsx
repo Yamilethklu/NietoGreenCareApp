@@ -593,11 +593,13 @@ export default function HomeScreen() {
     const draft = priceDraft(order);
     return <View style={styles.orderOps}>
       <Text style={styles.cardMeta}>{options.compact ? order.service : `Fecha: ${order.date} · ${order.service}`}</Text>
-      <View style={styles.priceRow}>
-        <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
-      </View>
-      <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
-      <Pressable style={styles.smallButton} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar cambios de la orden</Text></Pressable>
+      {!workerOnly && <>
+        <View style={styles.priceRow}>
+          <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
+        </View>
+        <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
+        <Pressable style={styles.smallButton} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar cambios de la orden</Text></Pressable>
+      </>}
       <View style={styles.priceRow}>
         <View style={styles.grow}><Field label="Precio" value={draft} keyboardType="numeric" onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
         <Pressable style={styles.smallButton} onPress={() => void saveOrderPrice(order)}><Text style={styles.smallButtonText}>Guardar precio</Text></Pressable>
