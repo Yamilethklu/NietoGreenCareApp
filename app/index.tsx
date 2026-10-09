@@ -592,6 +592,7 @@ export default function HomeScreen() {
       setMessage('No se encontró la solicitud de servicio especial. Actualiza la app e inténtalo de nuevo.');
       return;
     }
+    const house = houses.find((item) => item.id === lead.id);
     try {
       await adminRequest('operations', 'POST', {
         action: 'mobile_house',
@@ -601,8 +602,8 @@ export default function HomeScreen() {
           customer_phone: lead.phone.trim(),
           customer_email: lead.email.trim() || null,
           address: lead.address.trim(),
-          city: houses.find((item) => item.id === lead.id)?.city?.trim() || '',
-          zip_code: houses.find((item) => item.id === lead.id)?.zipCode?.trim() || '',
+          city: house?.city?.trim() || '',
+          zip_code: house?.zipCode?.trim() || '',
         },
         cadence: 'one_time',
         first_date: selectedDate,
