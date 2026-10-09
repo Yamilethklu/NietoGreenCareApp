@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
 import { siteUrl } from '../services/admin';
@@ -37,7 +37,9 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const related = houses.filter((house) => (phone(house.phone) || house.id) === customer);
   const ids = new Set(related.map((house) => house.id));
   const primary = related[0];
-  const history = orders.filter((order) => ids.has(order.houseId)).sort((a, b) => a.date.localeCompare(b.date));
+  const history = orders.filter((order) => ids.has(order.houseId)).sort((a, b) => b.date.localeCompare(a.date));
+  const [historyPage, setHistoryPage] = useState(0);
+  const visibleHistory = history.slice(historyPage * 50, historyPage * 50 + 50);
   const selectedCount = Object.keys(selected).length;
   const totalSelected = Object.values(selected).reduce((sum, value) => sum + Number(value || 0), 0);
 
@@ -77,7 +79,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   if (customer && primary) {
     return (
       <View>
-        <Pressable style={[button, { backgroundColor: '#475569' }]} onPress={() => { setCustomer(''); setSelected({}); setSearch(''); }}>
+        <Pressable style={[button, { backgroundColor: '#475569' }]} onPress={() => { setCustomer(''); setSelected({}); setSearch(''); setHistoryPage(0); }}>
           <Text style={{ color: '#fff', fontWeight: '800' }}>Volver a buscar cliente</Text>
         </Pressable>
 
@@ -106,7 +108,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
 
         <Text style={{ fontSize: 20, fontWeight: '800', marginTop: 16 }}>Trabajos programados e historial</Text>
 
-        {history.map((order) => {
+        {visibleHistory.map((order) => {
           const pending = order.paidAmount < order.price;
           const eligible = pending && !order.invoiceId;
           const balance = Math.max(0, order.price - order.paidAmount);
@@ -139,6 +141,18 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             </View>
           );
         })}
+
+        {history.length > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+            <Pressable accessibilityRole="button" disabled={historyPage === 0} style={[button, { backgroundColor: historyPage === 0 ? '#cbd5e1' : '#475569', flex: 1 }]} onPress={() => setHistoryPage((page) => Math.max(0, page - 1))}>
+              <Text style={{ color: '#fff', textAlign: 'center' }}>Más recientes</Text>
+            </Pressable>
+            <Text style={{ color: '#475569' }}>{historyPage * 50 + 1}–{Math.min((historyPage + 1) * 50, history.length)} de {history.length}</Text>
+            <Pressable accessibilityRole="button" disabled={(historyPage + 1) * 50 >= history.length} style={[button, { backgroundColor: (historyPage + 1) * 50 >= history.length ? '#cbd5e1' : '#475569', flex: 1 }]} onPress={() => setHistoryPage((page) => Math.min(Math.ceil(history.length / 50) - 1, page + 1))}>
+              <Text style={{ color: '#fff', textAlign: 'center' }}>Anteriores</Text>
+            </Pressable>
+          </View>
+        )}
 
         {!history.length && <Text style={{ color: '#64748b', marginTop: 8 }}>No hay trabajos programados para este cliente.</Text>}
 
@@ -207,6 +221,10 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             <Pressable style={button} disabled={busy || invoice.paid} onPress={() => void request('invoices', { action: 'pay', invoice_id: invoice.id, payment_method: method })}>
               <Text style={{ color: '#fff' }}>Registrar pago conjunto</Text>
             </Pressable>
+
+            <Pressable style={[button, { backgroundColor: '#dc2626' }]} disabled={busy || Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)} onPress={() => Alert.alert('Eliminar factura', 'La factura se eliminará y las visitas quedarán disponibles para una nueva factura.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => void request('invoices', { action: 'delete', invoice_id: invoice.id }) }])}>
+              <Text style={{ color: '#fff' }}>Eliminar factura</Text>
+            </Pressable>
           </View>
         ))}
 
@@ -222,7 +240,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
       <TextInput style={field} placeholder="Buscar por nombre" value={search} onChangeText={setSearch} />
 
       {customers.filter(([, house]) => house.client.toLowerCase().includes(search.toLowerCase())).map(([key, house]) => (
-        <Pressable key={key} style={button} onPress={() => { setCustomer(key); setSelected({}); }}>
+        <Pressable key={key} style={button} onPress={() => { setCustomer(key); setSelected({}); setHistoryPage(0); }}>
           <Text style={{ color: '#fff' }}>{house.client} · {house.phone}</Text>
         </Pressable>
       ))}
