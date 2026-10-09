@@ -589,11 +589,10 @@ export default function HomeScreen() {
     return worker?.email.toLowerCase() === email.toLowerCase();
   }
   function renderOrderOperations(order: Order, options: { compact?: boolean } = {}) {
-    const house = getHouse(order.houseId);
     const workerOnly = role === 'worker';
     const draft = priceDraft(order);
     return <View style={styles.orderOps}>
-      <Text style={styles.cardMeta}>{order.service}</Text>
+      <Text style={styles.cardMeta}>{options.compact ? order.service : `Fecha: ${order.date} · ${order.service}`}</Text>
       <View style={styles.priceRow}>
         <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
       </View>
