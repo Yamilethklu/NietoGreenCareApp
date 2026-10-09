@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export const panelSections = [
   { key: 'agenda', label: 'Agenda del día', icon: 'calendar-outline', group: 'OPERACIÓN' },
+  { key: 'nueva', label: 'Nueva Solicitud', icon: 'add-circle-outline', group: 'OPERACIÓN' },
   { key: 'solicitudes', label: 'Solicitudes', icon: 'mail-unread-outline', group: 'OPERACIÓN' },
+  { key: 'especiales', label: 'Servicio Especial', icon: 'sparkles-outline', group: 'OPERACIÓN' },
   { key: 'clientes', label: 'Historial', icon: 'people-outline', group: 'OPERACIÓN' },
   { key: 'invoices', label: 'Invoices', icon: 'receipt-outline', group: 'OPERACIÓN' },
   { key: 'trabajadores', label: 'Trabajadores', icon: 'person-outline', group: 'ADMINISTRACIÓN' },
