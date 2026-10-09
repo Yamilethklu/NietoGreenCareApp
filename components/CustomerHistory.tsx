@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
 import { siteUrl } from '../services/admin';
@@ -220,6 +220,10 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
 
             <Pressable style={button} disabled={busy || invoice.paid} onPress={() => void request('invoices', { action: 'pay', invoice_id: invoice.id, payment_method: method })}>
               <Text style={{ color: '#fff' }}>Registrar pago conjunto</Text>
+            </Pressable>
+
+            <Pressable style={[button, { backgroundColor: '#dc2626' }]} disabled={busy || Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)} onPress={() => Alert.alert('Eliminar factura', 'La factura se eliminará y las visitas quedarán disponibles para una nueva factura.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => void request('invoices', { action: 'delete', invoice_id: invoice.id }) }])}>
+              <Text style={{ color: '#fff' }}>Eliminar factura</Text>
             </Pressable>
           </View>
         ))}
