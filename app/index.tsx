@@ -84,6 +84,7 @@ export default function HomeScreen() {
   const [orderPriceDrafts, setOrderPriceDrafts] = useState<Record<string, string>>({});
   const [orderDateDrafts, setOrderDateDrafts] = useState<Record<string, string>>({});
   const [orderNoteDrafts, setOrderNoteDrafts] = useState<Record<string, string>>({});
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Status | 'unpaid'>('all');
   const [orderWorkerFilter, setOrderWorkerFilter] = useState('all');
 
@@ -409,6 +410,7 @@ export default function HomeScreen() {
       setOrderDateDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
       setOrderNoteDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
       await loadData();
+      setEditingOrderId(null);
       setMessage('Fecha y notas de la orden actualizadas.');
     }
   }
@@ -593,7 +595,7 @@ export default function HomeScreen() {
     const draft = priceDraft(order);
     return <View style={styles.orderOps}>
       <Text style={styles.cardMeta}>{options.compact ? order.service : `Fecha: ${order.date} · ${order.service}`}</Text>
-      {!workerOnly && <>
+      {!workerOnly && editingOrderId === order.id && <>
         <View style={styles.priceRow}>
           <View style={styles.grow}><Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
         </View>
@@ -608,6 +610,7 @@ export default function HomeScreen() {
       <View style={styles.actionLabels}>
         <Pressable style={[styles.actionButton, styles.doneAction]} onPress={() => updateStatus(order.id, 'FINALIZADA')}><Ionicons name="checkmark-done-outline" size={18} color="#052e16" /><Text style={styles.actionText}>Realizado</Text></Pressable>
         <Pressable disabled={order.paid} style={[styles.actionButton, order.paid ? styles.disabledAction : styles.payAction]} onPress={() => setPaymentTarget({ type: 'order', id: order.id })}><Ionicons name="cash-outline" size={18} color="#052e16" /><Text style={styles.actionText}>{order.paid ? 'Pagado' : 'Pagar'}</Text></Pressable>
+        {!workerOnly && <Pressable style={[styles.actionButton, { backgroundColor: '#eab308' }]} onPress={() => setEditingOrderId((current) => current === order.id ? null : order.id)}><Ionicons name="create-outline" size={18} color="#422006" /><Text style={styles.actionText}>{editingOrderId === order.id ? 'Cerrar edición' : 'Editar'}</Text></Pressable>}
         {!workerOnly && <Pressable style={[styles.actionButton, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}><Ionicons name="albums-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Historial</Text></Pressable>}
         {!workerOnly && <Pressable style={[styles.actionButton, { backgroundColor: '#dc2626' }]} onPress={() => deleteOrder(order.id)}><Ionicons name="trash-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Eliminar</Text></Pressable>}
       </View>
