@@ -451,7 +451,26 @@ export default function HomeScreen() {
       setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la solicitud.');
     }
   }
-  function deleteOrder(id: string) { void updateStatus(id, 'CANCELADA'); }
+  function deleteOrder(id: string) {
+    const order = orders.find((item) => item.id === id);
+    if (!order) return;
+    if (order.paidAmount > 0 || order.invoiceId) {
+      setMessage('No se puede eliminar una orden con pagos o factura. Elimine primero la factura pendiente si corresponde.');
+      return;
+    }
+    Alert.alert('Eliminar orden', 'La orden se eliminará de forma permanente. Esta acción no se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: () => void (async () => {
+        try {
+          await adminRequest('operations', 'POST', { action: 'order_delete', id });
+          await loadData();
+          setMessage('Orden eliminada.');
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la orden.');
+        }
+      })() },
+    ]);
+  }
   async function deleteHouse(id: string) {
     try {
       const house = houses.find((item) => item.id === id);
@@ -569,7 +588,7 @@ export default function HomeScreen() {
         <Pressable style={[styles.actionButton, styles.doneAction]} onPress={() => updateStatus(order.id, 'FINALIZADA')}><Ionicons name="checkmark-done-outline" size={18} color="#052e16" /><Text style={styles.actionText}>Realizado</Text></Pressable>
         <Pressable disabled={order.paid} style={[styles.actionButton, order.paid ? styles.disabledAction : styles.payAction]} onPress={() => setPaymentTarget({ type: 'order', id: order.id })}><Ionicons name="cash-outline" size={18} color="#052e16" /><Text style={styles.actionText}>{order.paid ? 'Pagado' : 'Pagar'}</Text></Pressable>
         {!workerOnly && <Pressable style={[styles.actionButton, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}><Ionicons name="albums-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Historial</Text></Pressable>}
-        {!workerOnly && <Pressable style={[styles.actionButton, styles.cancelAction]} onPress={() => deleteOrder(order.id)}><Ionicons name="ban-outline" size={18} color="#334155" /><Text style={styles.actionText}>Cancelar</Text></Pressable>}
+        {!workerOnly && <Pressable style={[styles.actionButton, { backgroundColor: '#dc2626' }]} onPress={() => deleteOrder(order.id)}><Ionicons name="trash-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Eliminar</Text></Pressable>}
       </View>
     </View>;
   }
