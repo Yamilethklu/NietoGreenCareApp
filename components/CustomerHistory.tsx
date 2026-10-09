@@ -79,7 +79,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   if (customer && primary) {
     return (
       <View>
-        <Pressable style={[button, { backgroundColor: '#475569' }]} onPress={() => { setCustomer(''); setSelected({}); setSearch(''); }}>
+        <Pressable style={[button, { backgroundColor: '#475569' }]} onPress={() => { setCustomer(''); setSelected({}); setSearch(''); setHistoryPage(0); }}>
           <Text style={{ color: '#fff', fontWeight: '800' }}>Volver a buscar cliente</Text>
         </Pressable>
 
@@ -236,7 +236,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
       <TextInput style={field} placeholder="Buscar por nombre" value={search} onChangeText={setSearch} />
 
       {customers.filter(([, house]) => house.client.toLowerCase().includes(search.toLowerCase())).map(([key, house]) => (
-        <Pressable key={key} style={button} onPress={() => { setCustomer(key); setSelected({}); }}>
+        <Pressable key={key} style={button} onPress={() => { setCustomer(key); setSelected({}); setHistoryPage(0); }}>
           <Text style={{ color: '#fff' }}>{house.client} · {house.phone}</Text>
         </Pressable>
       ))}
