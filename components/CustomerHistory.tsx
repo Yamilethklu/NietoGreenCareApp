@@ -140,9 +140,9 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
           <Pressable style={[button, { backgroundColor: '#eab308' }]} onPress={() => onEditHouse?.(primary)}>
             <Text style={{ color: '#422006', fontWeight: '800' }}>Editar casa / cliente</Text>
           </Pressable>
-          {primary.planId ? <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy || primary.active === false} onPress={() => Alert.alert('Desactivar visitas futuras', 'Se pausará el plan recurrente y se cancelarán las visitas futuras que sigan programadas. El historial y las facturas se conservarán.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Desactivar plan', style: 'destructive', onPress: () => void (async () => { setBusy(true); try { await adminRequest('operations', 'POST', { action: 'plan_update', id: primary.planId, changes: { active: false } }); await reload(); setMessage('Plan desactivado; el historial se conservó.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo desactivar el plan.'); } finally { setBusy(false); } })() }])}>
-            <Text style={{ color: '#fff', fontWeight: '800' }}>Desactivar visitas futuras</Text>
-          </Pressable> : null}
+          <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy} onPress={() => Alert.alert('Eliminar casa', 'La casa se archivará marcándola como cancelada y se pausarán sus visitas futuras. Por seguridad, el historial, las órdenes y las facturas no se borrarán.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Archivar casa', style: 'destructive', onPress: () => void (async () => { setBusy(true); try { await adminRequest('leads', 'PATCH', { id: primary.id, changes: { status: 'cancelled' } }); if (primary.planId) await adminRequest('operations', 'POST', { action: 'plan_update', id: primary.planId, changes: { active: false } }); await reload(); setMessage('Casa archivada; el historial y las facturas se conservaron.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo archivar la casa.'); } finally { setBusy(false); } })() }])}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Eliminar casa (conservar historial)</Text>
+          </Pressable>
           <Link href={{ pathname: '/historial/[propertyId]', params: { propertyId: primary.id } }} asChild>
             <Pressable style={button}>
               <Text style={{ color: '#fff' }}>Ver historial completo de esta propiedad</Text>
