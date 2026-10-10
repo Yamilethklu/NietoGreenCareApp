@@ -41,7 +41,7 @@ export default function HomeScreen() {
   const loadingRef = useRef(false);
   const reloadRequestedRef = useRef(false);
   const [session, setSession] = useState<Session | null>(null);
-  const [role, setRole] = useState<Role>(null);
+  const [role, setRole] = useState<Role>('admin');
   const [authorized, setAuthorized] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
