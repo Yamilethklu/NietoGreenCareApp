@@ -328,7 +328,7 @@ export default function HomeScreen() {
       setMessage('Precio actualizado.');
     }
   }
-  async function saveHouse(house: House) {
+  async function saveHouse(house: House, firstDate: string) {
     try {
       const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Cada 8 dias' ? 'every_8_days' : house.frequency === 'Cada 15 dias' ? 'every_15_days' : house.frequency === 'Una vez' ? 'one_time' : null;
       if(!cadence) throw new Error('Seleccione una frecuencia válida.');
@@ -337,16 +337,16 @@ export default function HomeScreen() {
         const created = await adminRequest('operations', 'POST', { action: 'house', house: housePayload });
         const leadId = String(created?.id ?? '');
         if (!leadId) throw new Error('No se recibió el identificador de la casa para crear el plan.');
-        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: leadId, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa creada con recurrencia exacta.'); return;
       }
       if (house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) {
         const fallbackCadence = cadence === 'every_8_days' ? 'weekly' : 'bi_weekly';
-        await adminRequest('operations', 'POST', { action: 'mobile_house', id: house.id, house: housePayload, cadence: fallbackCadence, first_date: selectedDate, price: house.price, notes: house.notes || null });
+        await adminRequest('operations', 'POST', { action: 'mobile_house', id: house.id, house: housePayload, cadence: fallbackCadence, first_date: firstDate, price: house.price, notes: house.notes || null });
         const operations = await adminRequest('operations');
         const priorPlans = Array.isArray(operations?.plans) ? operations.plans.filter((plan: { lead_id?: string; active?: boolean; created_at?: string }) => plan.lead_id === house.id && plan.active).sort((a: { created_at?: string }, b: { created_at?: string }) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))) : [];
         for (const prior of priorPlans) await adminRequest('operations', 'POST', { action: 'plan_update', id: prior.id, changes: { active: false } });
-        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
       }
       await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
@@ -584,12 +584,13 @@ function Actions({ items }: { items: [keyof typeof Ionicons.glyphMap, string, ()
 }
 function IconButton({ color, icon, onPress, disabled }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean }) { return <Pressable disabled={disabled} style={[styles.iconButton, { backgroundColor: color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
 function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) { return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>; }
-function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => Promise<void> }) {
+function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House, firstDate: string) => Promise<void> }) {
   const [draft, setDraft] = useState<House | null>(house);
+  const [firstDate, setFirstDate] = useState(texasDate());
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
-  useEffect(() => setDraft(house), [house]);
+  useEffect(() => { setDraft(house); setFirstDate(texasDate()); }, [house]);
   if (!draft) return null;
-  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 8 dias','Cada 14 dias','Cada 15 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Field label="Primera visita (AAAA-MM-DD)" value={firstDate} onChangeText={setFirstDate} /><Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 8 dias','Cada 14 dias','Cada 15 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft, firstDate);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
 function OrderEditModal({ order, workers, onClose, onSave }: { order: Order | null; workers: Worker[]; onClose: () => void; onSave: (order: Order, date: string, price: string, notes: string, workerId: string, status: Status) => Promise<void> }) {
   const [date, setDate] = useState(order?.date ?? texasDate());
