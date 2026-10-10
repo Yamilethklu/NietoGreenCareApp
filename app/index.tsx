@@ -713,7 +713,11 @@ function weekRange(date = texasDate()) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-function normalizePhone(value: string) { return value.replace(/\D/g, '').slice(-10); }
+function isSpecialServiceLead(lead: Lead) {
+  const value = normalizeSearch(`${lead.services} ${lead.details}`);
+  if (!value.trim()) return false;
+  return !/(weekly_biweekly_lawn_service|corte|cesped|lawn|yard)/.test(value);
+}
 function normalizeSearch(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
