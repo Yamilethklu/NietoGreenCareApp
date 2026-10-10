@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
-import { siteUrl } from '../services/admin';
+import { adminRequest, siteUrl } from '../services/admin';
 
-type House = { id: string; client: string; phone: string; email: string; address: string; service: string; notes?: string; details?: string; frequency?: string; price?: number; active?: boolean };
+type House = { id: string; planId?: string; client: string; phone: string; email: string; address: string; service: string; notes?: string; details?: string; frequency?: string; price?: number; active?: boolean };
 type Order = { id: string; houseId: string; date: string; status: string; price: number; paidAmount: number; invoiceId?: string; notes?: string };
 type Invoice = { id: string; houseId: string; orderIds: string[]; total: number; paid: boolean; sentAt?: string | null };
 
@@ -12,7 +12,7 @@ const phone = (value: string) => value.replace(/\D/g, '').slice(-10);
 const button = { backgroundColor: '#15803d', padding: 12, borderRadius: 8, marginTop: 8 } as const;
 const field = { borderWidth: 1, borderColor: '#cbd5e1', padding: 10, borderRadius: 8, backgroundColor: '#ffffff', color: '#111827', marginTop: 8 } as const;
 
-export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void }) {
+export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused, onEditHouse }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void; onEditHouse?: (house: House) => void }) {
   const [search, setSearch] = useState('');
   const [customer, setCustomer] = useState('');
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -137,6 +137,12 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             Las visitas se muestran según el calendario automático semanal o quincenal que ya se genera desde el plan del cliente.
           </Text>
 
+          <Pressable style={[button, { backgroundColor: '#eab308' }]} onPress={() => onEditHouse?.(primary)}>
+            <Text style={{ color: '#422006', fontWeight: '800' }}>Editar casa / cliente</Text>
+          </Pressable>
+          {primary.planId ? <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy || primary.active === false} onPress={() => Alert.alert('Desactivar visitas futuras', 'Se pausará el plan recurrente y se cancelarán las visitas futuras que sigan programadas. El historial y las facturas se conservarán.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Desactivar plan', style: 'destructive', onPress: () => void (async () => { setBusy(true); try { await adminRequest('operations', 'POST', { action: 'plan_update', id: primary.planId, changes: { active: false } }); await reload(); setMessage('Plan desactivado; el historial se conservó.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo desactivar el plan.'); } finally { setBusy(false); } })() }])}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Desactivar visitas futuras</Text>
+          </Pressable> : null}
           <Link href={{ pathname: '/historial/[propertyId]', params: { propertyId: primary.id } }} asChild>
             <Pressable style={button}>
               <Text style={{ color: '#fff' }}>Ver historial completo de esta propiedad</Text>
