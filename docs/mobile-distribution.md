@@ -2,24 +2,9 @@
 
 ## APK para Android
 
-El workflow `.github/workflows/android-apk.yml` solo se ejecuta manualmente desde **Actions → Android APK**. Escribe `YES` en el campo de confirmación. Requiere `EXPO_TOKEN` y la configuración pública existente de Supabase en GitHub Actions. El job corre typecheck y pruebas, solicita `eas build --platform android --profile preview --no-interactive --no-wait` y termina; no espera a que EAS compile, no descarga el archivo y no publica una GitHub Release.
+El workflow `.github/workflows/android-apk.yml` se ejecuta al cambiar `app.json`, `package.json`, `eas.json` o el propio workflow en `main`, y también permite ejecución manual desde **Actions → Android APK**. Para la ejecución manual escribe `YES`. Requiere `EXPO_TOKEN` y la configuración pública existente de Supabase en GitHub Actions. El job ejecuta typecheck y pruebas, solicita `eas build --platform android --profile preview --non-interactive --wait`, espera a que termine, descarga la APK y la publica en GitHub Releases con un tag único basado en el número de ejecución.
 
-Cuando termine el build en EAS:
-
-1. Abre el build Android `preview` en [EAS Builds](https://expo.dev/) o consúltalo con `eas build:list --platform android --profile preview`.
-2. Descarga el APK desde el detalle de ese build y confirma su versión/runtime antes de distribuirlo.
-3. Publica el archivo solo después de comprobarlo. Para crear un release nuevo, por ejemplo:
-
-   ```bash
-   gh release create app-v1.1.9 /ruta/NietoGreenCare-Android.apk \
-     --title "Nieto Green Care Android 1.1.9" \
-     --notes "APK Android 1.1.9"
-   ```
-
-   Para una versión posterior, usa un tag nuevo (por ejemplo `app-v1.2.0`). No sobrescribas una release existente.
-4. Actualiza el enlace de descarga del README únicamente cuando el release y su APK estén publicados.
-
-El único release comprobado actualmente es `app-v1.1.0`; no hay una APK `app-v1.1.9` publicada en GitHub Releases. Confirma en EAS si el build solicitado ya terminó y, si no existe un APK listo, genera uno antes de publicarlo manualmente. El build preview es un APK de distribución interna, no un AAB para Google Play.
+La versión de la app se lee de `package.json`; confirma el release más reciente en [GitHub Releases](https://github.com/Yamilethklu/NietoGreenCareApp/releases) antes de instalar o compartir una APK. No reutilices tags existentes ni distribuyas una compilación que no haya terminado correctamente. El build `preview` produce una APK para distribución interna, no un AAB para Google Play.
 
 ## OTA y builds nativos
 
