@@ -344,7 +344,7 @@ export default function HomeScreen() {
         await adminRequest('operations', 'POST', { action: 'mobile_house', id: house.id, house: housePayload, cadence: fallbackCadence, first_date: selectedDate, price: house.price, notes: house.notes || null });
         const operations = await adminRequest('operations');
         const priorPlans = Array.isArray(operations?.plans) ? operations.plans.filter((plan: { lead_id?: string; active?: boolean; created_at?: string }) => plan.lead_id === house.id && plan.active).sort((a: { created_at?: string }, b: { created_at?: string }) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))) : [];
-        if (priorPlans[0]?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: priorPlans[0].id, changes: { active: false } });
+        for (const prior of priorPlans) await adminRequest('operations', 'POST', { action: 'plan_update', id: prior.id, changes: { active: false } });
         await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
       }
