@@ -435,9 +435,9 @@ export default function HomeScreen() {
           <Ionicons name="checkmark-done-outline" size={17} color="#052e16" />
           <Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Estado'} ▾</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" disabled={order.paid} style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
-          <Ionicons name="cash-outline" size={17} color="#422006" />
-          <Text style={[styles.actionText, { color: '#422006' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" disabled={order.paid} style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); setPaymentNote(''); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
+          <Ionicons name="cash-outline" size={17} color="#052e16" />
+          <Text style={[styles.actionText, { color: '#052e16' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Abrir expediente e historial del cliente" disabled={order.paid} style={[styles.compactAction, styles.historyAction, order.paid && { opacity: 0.45 }]} onPress={() => openCustomerHistory(order.houseId)}>
           <Ionicons name="albums-outline" size={17} color="#ffffff" />
@@ -670,7 +670,7 @@ const styles = StyleSheet.create({
   agendaCompactCard:{padding:8,gap:6},
   compactAction:{minHeight:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4,borderRadius:6,paddingHorizontal:7,paddingVertical:4},
   savePriceButton:{flexDirection:'row',alignItems:'center',gap:3,paddingHorizontal:8,paddingVertical:7},
-  paymentCompactAction:{backgroundColor:'#facc15'},
+  paymentCompactAction:{backgroundColor:'#86efac'},
   actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9 },
   doneAction: { backgroundColor: '#86efac' },
   payAction: { backgroundColor: '#bbf7d0' },
