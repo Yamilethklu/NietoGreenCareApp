@@ -12,7 +12,7 @@ const phone = (value: string) => value.replace(/\D/g, '').slice(-10);
 const button = { backgroundColor: '#15803d', padding: 12, borderRadius: 8, marginTop: 8 } as const;
 const field = { borderWidth: 1, borderColor: '#cbd5e1', padding: 10, borderRadius: 8, backgroundColor: '#ffffff', color: '#111827', marginTop: 8 } as const;
 
-export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused, onEditHouse }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void; onEditHouse?: (house: House) => void }) {
+export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused, onEditHouse, onInvoiceDetail }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void; onEditHouse?: (house: House) => void; onInvoiceDetail?: (invoiceId: string) => void }) {
   const [search, setSearch] = useState('');
   const [customer, setCustomer] = useState('');
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -281,7 +281,11 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
         {invoices.filter((invoice) => ids.has(invoice.houseId) && (invoiceHistoryFilter === 'todos' || (invoiceHistoryFilter === 'pagado' ? invoice.paid : !invoice.paid))).map((invoice) => (
           <View key={invoice.id} style={field}>
             <Text>{invoice.orderIds.map((id) => orders.find((order) => order.id === id)?.date).join(' · ')}</Text>
-            <Text>${invoice.total.toFixed(2)} · {invoice.paid ? 'Pagada' : 'Pendiente'}</Text>
+            <Text>{primary.address}</Text>
+            <Text>${invoice.total.toFixed(2)} · {invoice.paid ? 'Pagada' : invoice.sentAt ? 'Enviada / pendiente' : 'Pendiente'}</Text>
+            <Pressable style={[button, { backgroundColor: '#2563eb' }]} disabled={busy} onPress={() => onInvoiceDetail?.(invoice.id)}>
+              <Text style={{ color: '#fff', fontWeight: '800' }}>Ver detalle / registrar pago</Text>
+            </Pressable>
 
             {!invoice.sentAt && !invoice.paid && (
               <>
