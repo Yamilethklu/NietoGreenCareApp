@@ -1,6 +1,13 @@
 name: Android APK
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.json'
+      - 'package.json'
+      - 'eas.json'
+      - '.github/workflows/android-apk.yml'
   workflow_dispatch:
     inputs:
       confirm:
@@ -17,7 +24,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ inputs.confirm == 'YES' }}
+    if: ${{ github.event_name == 'push' || inputs.confirm == 'YES' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
