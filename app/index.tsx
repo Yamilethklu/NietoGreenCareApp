@@ -158,7 +158,6 @@ export default function HomeScreen() {
   }
 
   const visibleOrders = useMemo(() => {
-    const today = texasDate();
     return orders.filter((order) => {
       if (order.date !== selectedDate) return false;
       if (role === 'worker' && !workerMatches(order, session?.user.email)) return false;
@@ -682,7 +681,7 @@ export default function HomeScreen() {
         {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
-      <Modal visible={agendaCalendarOpen} transparent animationType="fade" onRequestClose={() => setAgendaCalendarOpen(false)}><View style={styles.modalOverlay}><Pressable style={StyleSheet.absoluteFill} onPress={() => setAgendaCalendarOpen(false)} /><View style={[styles.modal, { maxHeight: '85%' }]}><SectionTitle title="Elegir día de la agenda" action="Cerrar" onPress={() => setAgendaCalendarOpen(false)} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => { setSelectedDate(dateString); setAgendaCalendarOpen(false); }} /><Pressable style={styles.primaryButton} onPress={() => { setSelectedDate(texasDate()); setAgendaCalendarOpen(false); }}><Text style={styles.primaryText}>Volver a hoy</Text></Pressable></View></View></Modal>
+      <Modal visible={agendaCalendarOpen} transparent animationType="fade" onRequestClose={() => setAgendaCalendarOpen(false)}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFill} onPress={() => setAgendaCalendarOpen(false)} /><View style={[styles.modal, { maxHeight: '85%' }]}><SectionTitle title="Elegir día de la agenda" action="Cerrar" onPress={() => setAgendaCalendarOpen(false)} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => { setSelectedDate(dateString); setAgendaCalendarOpen(false); }} /><Pressable style={styles.primaryButton} onPress={() => { setSelectedDate(texasDate()); setAgendaCalendarOpen(false); }}><Text style={styles.primaryText}>Volver a hoy</Text></Pressable></View></View></Modal>
       <AcceptLeadModal lead={acceptingLead} onClose={() => setAcceptingLead(null)} onSave={(lead, date, note, cadence) => void acceptLeadRequest(lead, date, note, cadence)} />
       <LeadNoteModal lead={editingLeadNote} onClose={() => setEditingLeadNote(null)} onSave={(id, note) => void saveLeadNote(id, note)} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} date={paymentDate} onDate={setPaymentDate} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
