@@ -29,7 +29,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const [busy, setBusy] = useState(false);
   const [invoiceHistoryFilter, setInvoiceHistoryFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
 
-  const customers = Array.from(new Map(houses.map((house) => [phone(house.phone) || house.id, house])).entries());
+
 
   useEffect(() => {
     if (!focusHouseId) return;
@@ -48,6 +48,30 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const visibleHistory = history.slice(historyPage * 50, historyPage * 50 + 50);
   const selectedCount = Object.keys(selected).length;
   const totalSelected = Object.values(selected).reduce((sum, value) => sum + Number(value || 0), 0);
+
+  const archiveHouse = (house: House) => Alert.alert(
+    'Eliminar casa',
+    `La casa ${house.address || house.client} se archivará y se pausarán sus visitas futuras. El historial, las órdenes y las facturas se conservarán.`,
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Archivar casa', style: 'destructive', onPress: () => void (async () => {
+        setBusy(true);
+        try {
+          const operations = await adminRequest('operations');
+          const plans = Array.isArray(operations?.plans) ? operations.plans.filter((plan: { lead_id?: string; active?: boolean; id?: string }) => plan.lead_id === house.id && plan.active && plan.id) : [];
+          for (const plan of plans) await adminRequest('operations', 'POST', { action: 'plan_update', id: plan.id, changes: { active: false } });
+          await adminRequest('leads', 'PATCH', { id: house.id, changes: { status: 'cancelled' } });
+          await reload();
+          setMessage('Casa archivada; el historial y las facturas se conservaron.');
+          if (customer === (phone(house.phone) || house.id)) { setCustomer(''); setSelected({}); setHistoryPage(0); }
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'No se pudo archivar la casa.');
+        } finally {
+          setBusy(false);
+        }
+      })() },
+    ],
+  );
 
   const request = async (path: string, body: unknown) => {
     if (!session) return;
@@ -143,7 +167,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
           <Pressable style={[button, { backgroundColor: '#eab308' }]} onPress={() => onEditHouse?.(primary)}>
             <Text style={{ color: '#422006', fontWeight: '800' }}>Editar casa / cliente</Text>
           </Pressable>
-          <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy} onPress={() => Alert.alert('Eliminar casa', 'La casa se archivará marcándola como cancelada y se pausarán sus visitas futuras. Por seguridad, el historial, las órdenes y las facturas no se borrarán.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Archivar casa', style: 'destructive', onPress: () => void (async () => { setBusy(true); try { if (primary.planId) await adminRequest('operations', 'POST', { action: 'plan_update', id: primary.planId, changes: { active: false } }); await adminRequest('leads', 'PATCH', { id: primary.id, changes: { status: 'cancelled' } }); await reload(); setMessage('Casa archivada; el historial y las facturas se conservaron.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo archivar la casa.'); } finally { setBusy(false); } })() }])}>
+          <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy} onPress={() => archiveHouse(primary)}>
             <Text style={{ color: '#fff', fontWeight: '800' }}>Eliminar casa (conservar historial)</Text>
           </Pressable>
           <Link href={{ pathname: '/historial/[propertyId]', params: { propertyId: primary.id } }} asChild>
@@ -317,10 +341,23 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
 
       <TextInput style={field} placeholder="Buscar por nombre" value={search} onChangeText={setSearch} />
 
-      {customers.filter(([, house]) => house.client.toLowerCase().includes(search.toLowerCase())).map(([key, house]) => (
-        <Pressable key={key} style={button} onPress={() => { setCustomer(key); setSelected({}); setHistoryPage(0); }}>
-          <Text style={{ color: '#fff' }}>{house.client} · {house.phone}</Text>
-        </Pressable>
+      {houses.filter((house) => house.client.toLowerCase().includes(search.toLowerCase()) || house.address.toLowerCase().includes(search.toLowerCase())).map((house) => (
+        <View key={house.id} style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 10, marginTop: 10, backgroundColor: '#fff', gap: 6 }}>
+          <Text style={{ fontWeight: '800', color: '#14532d' }}>{house.client}</Text>
+          <Text>{house.address || 'Dirección pendiente'}</Text>
+          <Text style={{ color: '#64748b' }}>{house.phone} · {house.active === false ? 'Inactiva' : 'Activa'}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Abrir historial de ${house.client}`} style={[button, { backgroundColor: '#2563eb', flex: 1 }]} onPress={() => { setCustomer(phone(house.phone) || house.id); setSearch(house.client); setSelected({}); setHistoryPage(0); }}>
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>Historial</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Editar casa de ${house.client}`} style={[button, { backgroundColor: '#eab308', flex: 1 }]} disabled={busy} onPress={() => onEditHouse?.(house)}>
+              <Text style={{ color: '#422006', textAlign: 'center', fontWeight: '800' }}>Editar</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Eliminar casa de ${house.client}`} style={[button, { backgroundColor: '#b91c1c', flex: 1 }]} disabled={busy} onPress={() => archiveHouse(house)}>
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>Eliminar</Text>
+            </Pressable>
+          </View>
+        </View>
       ))}
 
       {message ? <Text accessibilityLiveRegion="polite" style={{ marginTop: 12 }}>{message}</Text> : null}
