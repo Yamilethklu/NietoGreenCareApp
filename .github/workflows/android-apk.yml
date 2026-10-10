@@ -79,16 +79,16 @@ jobs:
           }
           fs.writeFileSync('apk-url.txt', url);
           NODE
-          curl --fail --location --retry 3 "$(cat apk-url.txt)" --output NietoGreenCareApp-1.1.10.apk
+          curl --fail --location --retry 3 "$(cat apk-url.txt)" --output NietoGreenCareApp-1.1.10-android11.apk
           test -s NietoGreenCareApp-1.1.10.apk
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v1.1.10
-          name: Nieto Green Care Android 1.1.10
+          tag_name: android-v1.1.10-android11
+          name: Nieto Green Care Android 1.1.10 (Android build 11)
           body: |
             APK Android generada desde la rama main del repositorio.
-            Versión de la app: 1.1.10.
+            Versión de la app: 1.1.10. Android versionCode administrado por EAS; build Android específico.
             La compilación solo se publica si EAS termina correctamente y el archivo APK se descarga.
           files: NietoGreenCareApp-1.1.10.apk
           make_latest: true
