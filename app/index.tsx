@@ -57,8 +57,10 @@ export default function HomeScreen() {
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [invoicePage, setInvoicePage] = useState(0);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [historyFocusHouseId, setHistoryFocusHouseId] = useState<string | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentDate, setPaymentDate] = useState(texasDate());
@@ -251,9 +253,9 @@ export default function HomeScreen() {
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row) => [String(row.order_id), row]));
     setLeads(leadData.map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? '', ownerNotes: row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status ?? undefined), finalPrice: Number(row.final_price ?? 0) })));
     knownLeadIdsRef.current = new Set(leadData.map(row => row.id));
-    setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? '', details: row.details ?? '' }; }));
+    setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: plan?.notes?.startsWith('Servicio: ') ? plan.notes.split('\n')[0].slice('Servicio: '.length) : (Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda'), price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes?.startsWith('Servicio: ') ? plan.notes.split('\n').slice(1).join('\n').replace(/^Nota: /, '') : (plan?.notes ?? row.additional_notes ?? ''), details: row.details ?? '' }; }));
     if (workerRows.data) setWorkers(workerRows.data.map((row) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
-    if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
+    if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: row.notes?.startsWith('Servicio: ') ? row.notes.split('\n')[0].slice('Servicio: '.length) : (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes?.startsWith('Servicio: ') ? row.notes.split('\n').slice(1).join('\n').replace(/^Nota: /, '') : (row.notes ?? undefined), invoiceId: invoice?.id }; }));
     if (invoiceRows.data) {
       const groups=new Map<string,InvoiceRow[]>();
       for(const row of invoiceRows.data){const key=String(row.invoice_number).startsWith('NGC-G-')?String(row.invoice_number).split('/')[0]:row.invoice_number;groups.set(key,[...(groups.get(key)??[]),row]);}
@@ -272,6 +274,32 @@ export default function HomeScreen() {
     }
   }
 
+  async function deleteOrder(order: Order) {
+    if (order.paid || order.paidAmount > 0 || order.invoiceId) {
+      setMessage('No se puede eliminar una orden pagada o incluida en una factura. Elimine primero la factura pendiente si corresponde.');
+      return;
+    }
+    Alert.alert('Eliminar orden', `¿Eliminar únicamente la orden del ${order.date}? La casa y las demás visitas no se modificarán.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar orden', style: 'destructive', onPress: () => void (async () => {
+        try {
+          await adminRequest('operations', 'POST', { action: 'order_delete', id: order.id });
+          await loadData();
+          setMessage('Se eliminó únicamente la orden seleccionada.');
+        } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la orden.'); }
+      })() },
+    ]);
+  }
+  async function saveOrderEdit(order: Order, date: string, priceText: string, notes: string, workerId: string, status: Status) {
+    const price = Number(priceText);
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('La fecha debe tener el formato AAAA-MM-DD.');
+    if (!Number.isFinite(price) || price < order.paidAmount) throw new Error('El precio debe ser válido y no menor que los pagos recibidos.');
+    const ok = await updateOrder(order.id, { service_date: date, price, notes: notes.trim() || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
+    if (!ok) throw new Error('No se pudo guardar la orden. Revisa la conexión y la disponibilidad del horario.');
+    setEditingOrder(null);
+    await loadData();
+    setMessage('Orden actualizada.');
+  }
   async function updateStatus(id: string, status: Status) {
     if (await updateOrder(id, { status: dbOrderStatus(status) })) await loadData();
   }
@@ -300,11 +328,29 @@ export default function HomeScreen() {
       setMessage('Precio actualizado.');
     }
   }
-  async function saveHouse(house: House) {
+  async function saveHouse(house: House, firstDate: string) {
     try {
       const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Cada 8 dias' ? 'every_8_days' : house.frequency === 'Cada 15 dias' ? 'every_15_days' : house.frequency === 'Una vez' ? 'one_time' : null;
       if(!cadence) throw new Error('Seleccione una frecuencia válida.');
-      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:{customer_name:house.client.trim(),customer_phone:house.phone.trim(),customer_email:house.email.trim()||null,address:house.address.trim(),city:house.city?.trim()||'',zip_code:house.zipCode?.trim()||''},cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
+      const workNotes = [`Servicio: ${house.service.trim() || 'Corte de yarda'}`, house.notes.trim() ? `Nota: ${house.notes.trim()}` : ''].filter(Boolean).join('\n');
+      const housePayload = { customer_name: house.client.trim(), customer_phone: house.phone.trim(), customer_email: house.email.trim() || null, address: house.address.trim(), city: house.city?.trim() || '', zip_code: house.zipCode?.trim() || '' };
+      if (!house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) {
+        const created = await adminRequest('operations', 'POST', { action: 'house', house: housePayload });
+        const leadId = String(created?.id ?? '');
+        if (!leadId) throw new Error('No se recibió el identificador de la casa para crear el plan.');
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: leadId, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: workNotes || null } });
+        await loadData(); setEditingHouse(null); setMessage('Casa creada con recurrencia exacta.'); return;
+      }
+      if (house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) {
+        const fallbackCadence = cadence === 'every_8_days' ? 'weekly' : 'bi_weekly';
+        await adminRequest('operations', 'POST', { action: 'mobile_house', id: house.id, house: housePayload, cadence: fallbackCadence, first_date: firstDate, price: house.price, notes: workNotes || null });
+        const operations = await adminRequest('operations');
+        const priorPlans = Array.isArray(operations?.plans) ? operations.plans.filter((plan: { lead_id?: string; active?: boolean; created_at?: string }) => plan.lead_id === house.id && plan.active).sort((a: { created_at?: string }, b: { created_at?: string }) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))) : [];
+        for (const prior of priorPlans) await adminRequest('operations', 'POST', { action: 'plan_update', id: prior.id, changes: { active: false } });
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: workNotes || null } });
+        await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
+      }
+      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
   }
@@ -374,8 +420,10 @@ export default function HomeScreen() {
     const acceptedOwnerNote = leads.find((lead) => lead.id === order.houseId)?.ownerNotes?.trim() ?? '';
     const ownerNote = acceptedOwnerNote && normalizeSearch(acceptedOwnerNote) !== normalizeSearch(house?.address ?? '') ? acceptedOwnerNote : '';
     return <View key={order.id} style={[styles.card, styles.agendaCompactCard, orderCardStyle(order)]}>
+      <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text>
       <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
-      <Text style={styles.ownerNote}>Notas privadas del dueño: {ownerNote || 'Sin notas'}</Text>
+      <Text style={styles.cardMeta}>Servicio: {order.service || house?.service || 'Servicio general'} · Fecha: {order.date}</Text>
+      <Text style={styles.ownerNote}>Notas privadas del dueño: {ownerNote || order.notes || 'Sin notas'}</Text>
       <View style={styles.priceRow}>
         <View style={styles.grow}>
           <Field label="Precio ($)" value={priceDraft(order)} keyboardType="numeric" disabled={order.paid} onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} />
@@ -390,15 +438,26 @@ export default function HomeScreen() {
           <Ionicons name="checkmark-done-outline" size={17} color="#052e16" />
           <Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Estado'} ▾</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" disabled={order.paid} style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
-          <Ionicons name="cash-outline" size={17} color="#422006" />
-          <Text style={[styles.actionText, { color: '#422006' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" disabled={order.paid} style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); setPaymentNote(''); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
+          <Ionicons name="cash-outline" size={17} color="#052e16" />
+          <Text style={[styles.actionText, { color: '#052e16' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Abrir expediente e historial del cliente" disabled={order.paid} style={[styles.compactAction, styles.historyAction, order.paid && { opacity: 0.45 }]} onPress={() => openCustomerHistory(order.houseId)}>
           <Ionicons name="albums-outline" size={17} color="#ffffff" />
           <Text style={[styles.actionText, styles.lightActionText]}>Expediente</Text>
         </Pressable>
       </View>
+      {role === 'admin' && <View style={styles.actionLabels}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Editar orden" style={[styles.compactAction, { backgroundColor: '#facc15' }]} onPress={() => setEditingOrder(order)}>
+          <Ionicons name="create-outline" size={17} color="#422006" /><Text style={[styles.actionText, { color: '#422006' }]}>Editar</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Asignar trabajador" style={[styles.compactAction, { backgroundColor: '#dbeafe' }]} onPress={() => Alert.alert('Asignar trabajador', 'Selecciona quién realizará esta visita.', [{ text: 'Sin asignar', onPress: () => void (async () => { if (await updateOrder(order.id, { crew_member_id: null })) await loadData(); })() }, ...workers.filter((worker) => worker.active).map((worker) => ({ text: worker.name, onPress: () => void (async () => { if (await updateOrder(order.id, { crew_member_id: worker.id })) await loadData(); })() })), { text: 'Cancelar', style: 'cancel' }])}>
+          <Ionicons name="person-add-outline" size={17} color="#1e3a8a" /><Text style={[styles.actionText, { color: '#1e3a8a' }]}>{workers.find((worker) => worker.id === order.workerId)?.name ?? 'Asignar'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Eliminar únicamente esta orden" disabled={order.paid || order.paidAmount > 0 || Boolean(order.invoiceId)} style={[styles.compactAction, { backgroundColor: '#fee2e2', opacity: order.paid || order.paidAmount > 0 || order.invoiceId ? 0.45 : 1 }]} onPress={() => deleteOrder(order)}>
+          <Ionicons name="trash-outline" size={17} color="#991b1b" /><Text style={[styles.actionText, { color: '#991b1b' }]}>Eliminar</Text>
+        </Pressable>
+      </View>}
     </View>;
   }
   async function ensureCurrentWeeklySummary(rows: OrderRow[]): Promise<boolean> {
@@ -463,13 +522,15 @@ export default function HomeScreen() {
       <PanelNavigation open={menuOpen} worker={role==='worker'} active={tab} onClose={()=>setMenuOpen(false)} onSelect={next=>{setTab(next);contentRef.current?.scrollTo({y:0,animated:false});}} onWebsite={()=>openExternalUrl(siteUrl)} onSignOut={()=>void signOut()} onReminder={()=>void enableNotifications()} />
       <ScrollView ref={contentRef} contentContainerStyle={styles.content}>
         <View style={styles.syncNotice}><Ionicons name="cloud-outline" size={16} color="#64748b"/><Text accessibilityLiveRegion="polite" style={styles.syncText}>{message}</Text></View>
-        {tab === 'clientes' && <CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} />}
+        {tab === 'clientes' && <>{role === 'admin' && <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={() => setEditingHouse({ id: '', client: '', address: '', city: '', zipCode: '', phone: '', email: '', frequency: 'Cada 7 dias', service: 'Corte de yarda', price: 0, active: true, notes: '', details: '' })}><Text style={styles.primaryText}>+ Agregar casa nueva</Text></Pressable>}<CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} onEditHouse={(house) => setEditingHouse({ ...house, frequency: house.frequency ?? 'Cada 7 dias', price: house.price ?? 0, active: house.active ?? true, notes: house.notes ?? '', details: house.details ?? '' })} /></>}
         {tab === 'agenda' && <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Agenda del Día</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable accessibilityRole="button" accessibilityLabel="Elegir fecha de la agenda" style={styles.smallButton} onPress={() => setAgendaCalendarOpen(true)}><Ionicons name="calendar-outline" size={16} color="#14532d" /><Text style={styles.smallButtonText}>{selectedDate}</Text></Pressable><Pressable accessibilityRole="button" style={styles.smallButton} onPress={() => setSelectedDate(texasDate())}><Text style={styles.smallButtonText}>Hoy</Text></Pressable></View></View><Text style={styles.cardMeta}>Trabajos programados para {selectedDate}</Text>{visibleOrders.map((order) => renderAgendaOrder(order))}{!visibleOrders.length && <EmptyState text={`No hay trabajos agendados para ${selectedDate}`} />}</>}
-        {tab === 'invoices' && <><SectionTitle title="Facturas y pagos" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => { setInvoiceFilter(item); setInvoicePage(0); }}><Text style={styles.segmentText}>{item === 'todos' ? 'Todas' : item === 'pagado' ? 'Pagadas' : 'Sin pagar'}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : invoice.sentAt ? 'ENVIADA' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setPaymentTarget({ type: 'invoice', id: invoice.id })], ['send-outline', invoice.sentAt ? '#cbd5e1' : '#0f766e', () => void sendInvoice(invoice.id), Boolean(invoice.sentAt)], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => void deleteInvoice(invoice.id), Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)]]} /></Card>)}{sortedInvoices.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 16 }}><Pressable accessibilityRole="button" disabled={invoicePageStart === 0} style={[styles.smallButton, invoicePageStart === 0 && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => Math.max(0, page - 1))}><Text style={styles.smallButtonText}>Más recientes</Text></Pressable><Text style={styles.cardMeta}>{invoicePageStart + 1}–{Math.min(invoicePageStart + 50, sortedInvoices.length)} de {sortedInvoices.length}</Text><Pressable accessibilityRole="button" disabled={invoicePageStart + 50 >= sortedInvoices.length} style={[styles.smallButton, invoicePageStart + 50 >= sortedInvoices.length && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => page + 1)}><Text style={styles.smallButtonText}>Anteriores</Text></Pressable></View>}{!filteredInvoices.length && <EmptyState text="No hay facturas para este filtro." />}</>}
+        {tab === 'invoices' && <><SectionTitle title="Facturas y pagos" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => { setInvoiceFilter(item); setInvoicePage(0); }}><Text style={styles.segmentText}>{item === 'todos' ? 'Todas' : item === 'pagado' ? 'Pagadas' : 'Sin pagar'}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : invoice.sentAt ? 'ENVIADA' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setInvoiceDetailId(invoice.id)], ['send-outline', invoice.sentAt ? '#cbd5e1' : '#0f766e', () => void sendInvoice(invoice.id), Boolean(invoice.sentAt)], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => void deleteInvoice(invoice.id), Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)]]} /></Card>)}{sortedInvoices.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 16 }}><Pressable accessibilityRole="button" disabled={invoicePageStart === 0} style={[styles.smallButton, invoicePageStart === 0 && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => Math.max(0, page - 1))}><Text style={styles.smallButtonText}>Más recientes</Text></Pressable><Text style={styles.cardMeta}>{invoicePageStart + 1}–{Math.min(invoicePageStart + 50, sortedInvoices.length)} de {sortedInvoices.length}</Text><Pressable accessibilityRole="button" disabled={invoicePageStart + 50 >= sortedInvoices.length} style={[styles.smallButton, invoicePageStart + 50 >= sortedInvoices.length && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => page + 1)}><Text style={styles.smallButtonText}>Anteriores</Text></Pressable></View>}{!filteredInvoices.length && <EmptyState text="No hay facturas para este filtro." />}</>}
         {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
+      <OrderEditModal order={editingOrder} workers={workers} onClose={() => setEditingOrder(null)} onSave={saveOrderEdit} />
       <Modal visible={agendaCalendarOpen} transparent animationType="fade" onRequestClose={() => setAgendaCalendarOpen(false)}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFill} onPress={() => setAgendaCalendarOpen(false)} /><View style={[styles.modal, { maxHeight: '85%' }]}><SectionTitle title="Elegir día de la agenda" action="Cerrar" onPress={() => setAgendaCalendarOpen(false)} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => { setSelectedDate(dateString); setAgendaCalendarOpen(false); }} /><Pressable style={styles.primaryButton} onPress={() => { setSelectedDate(texasDate()); setAgendaCalendarOpen(false); }}><Text style={styles.primaryText}>Volver a hoy</Text></Pressable></View></View></Modal>
+      <InvoiceDetailModal invoice={invoices.find((item) => item.id === invoiceDetailId) ?? null} house={houses.find((item) => item.id === invoices.find((item) => item.id === invoiceDetailId)?.houseId)} orders={orders.filter((item) => (invoices.find((invoice) => invoice.id === invoiceDetailId)?.orderIds ?? []).includes(item.id))} onClose={() => setInvoiceDetailId(null)} onPay={() => { if (invoiceDetailId) { setPaymentTarget({ type: 'invoice', id: invoiceDetailId }); setPaymentDate(texasDate()); setPaymentNote(''); setInvoiceDetailId(null); } }} />
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} date={paymentDate} onDate={setPaymentDate} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
     </SafeAreaView>
   );
@@ -524,12 +585,41 @@ function Actions({ items }: { items: [keyof typeof Ionicons.glyphMap, string, ()
 }
 function IconButton({ color, icon, onPress, disabled }: { color: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean }) { return <Pressable disabled={disabled} style={[styles.iconButton, { backgroundColor: color }]} onPress={onPress}><Ionicons name={icon} size={18} color="white" /></Pressable>; }
 function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | 'red' | 'white' }) { return <Text style={[styles.pill, styles[`${tone}Pill`]]}>{label}</Text>; }
-function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => Promise<void> }) {
+function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House, firstDate: string) => Promise<void> }) {
   const [draft, setDraft] = useState<House | null>(house);
+  const [firstDate, setFirstDate] = useState(texasDate());
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
-  useEffect(() => setDraft(house), [house]);
+  useEffect(() => { setDraft(house); setFirstDate(texasDate()); }, [house]);
   if (!draft) return null;
-  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 8 dias','Cada 14 dias','Cada 15 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'service', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Field label="Primera visita (AAAA-MM-DD)" value={firstDate} onChangeText={setFirstDate} /><Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 8 dias','Cada 14 dias','Cada 15 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft, firstDate);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+}
+function OrderEditModal({ order, workers, onClose, onSave }: { order: Order | null; workers: Worker[]; onClose: () => void; onSave: (order: Order, date: string, price: string, notes: string, workerId: string, status: Status) => Promise<void> }) {
+  const [date, setDate] = useState(order?.date ?? texasDate());
+  const [price, setPrice] = useState(String(order?.price ?? 0));
+  const [notes, setNotes] = useState(order?.notes ?? '');
+  const [workerId, setWorkerId] = useState(order?.workerId ?? '');
+  const [status, setStatus] = useState<Status>(order?.status ?? 'SOLICITADO');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { setDate(order?.date ?? texasDate()); setPrice(String(order?.price ?? 0)); setNotes(order?.notes ?? ''); setWorkerId(order?.workerId ?? ''); setStatus(order?.status ?? 'SOLICITADO'); setError(''); }, [order]);
+  return <Modal visible={!!order} animationType="slide" onRequestClose={onClose}><SafeAreaView style={styles.modal}><SectionTitle title="Editar orden de trabajo" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>
+    <Field label="Fecha (AAAA-MM-DD)" value={date} onChangeText={setDate} />
+    <Field label="Precio ($)" value={price} keyboardType="numeric" onChangeText={setPrice} />
+    <Text style={styles.label}>Estado</Text><View style={styles.segment}>{(['SOLICITADO','FINALIZADA','CANCELADA'] as Status[]).map(value => <Pressable key={value} style={[styles.segmentButton, status === value && styles.segmentActive]} onPress={() => setStatus(value)}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View>
+    <Text style={styles.label}>Trabajador asignado</Text><View style={styles.segment}><Pressable style={[styles.segmentButton, !workerId && styles.segmentActive]} onPress={() => setWorkerId('')}><Text style={styles.segmentText}>Sin asignar</Text></Pressable>{workers.filter(worker => worker.active).map(worker => <Pressable key={worker.id} style={[styles.segmentButton, workerId === worker.id && styles.segmentActive]} onPress={() => setWorkerId(worker.id)}><Text style={styles.segmentText}>{worker.name}</Text></Pressable>)}</View>
+    <Field label="Notas de la orden" value={notes} onChangeText={setNotes} multiline />
+    {error ? <Text accessibilityLiveRegion="polite" style={{ color: '#b91c1c' }}>{error}</Text> : null}
+    <Pressable disabled={saving || !order} style={[styles.primaryButton, saving && { opacity: 0.5 }]} onPress={() => { if (!order || saving) return; setSaving(true); setError(''); void onSave(order, date, price, notes, workerId, status).catch(value => setError(value instanceof Error ? value.message : 'No se pudo guardar.')).finally(() => setSaving(false)); }}><Text style={styles.primaryText}>{saving ? 'Guardando…' : 'Guardar cambios'}</Text></Pressable>
+  </ScrollView></SafeAreaView></Modal>;
+}
+function InvoiceDetailModal({ invoice, house, orders, onClose, onPay }: { invoice: Invoice | null; house?: House; orders: Order[]; onClose: () => void; onPay: () => void }) {
+  return <Modal visible={!!invoice} transparent animationType="fade" onRequestClose={onClose}><View style={styles.overlay}><View style={[styles.paymentBox, { maxHeight: '85%' }]}><SectionTitle title="Detalle de invoice" action="Cerrar" onPress={onClose} /><ScrollView>
+    <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text><Text style={styles.cardMeta}>{house?.address ?? 'Dirección no disponible'}</Text>
+    <Text style={styles.cardMeta}>Invoice: {invoice?.number ?? invoice?.id}</Text><Text style={styles.cardMeta}>Fecha: {invoice?.createdAt}</Text>
+    {orders.map(order => <View key={order.id} style={[styles.card, { marginTop: 8 }]}><Text style={styles.cardMeta}>{order.date} · {order.service}</Text><Text>Precio: ${order.price.toFixed(2)}</Text><Text>Pagado: ${order.paidAmount.toFixed(2)} · Saldo: ${Math.max(0, order.price - order.paidAmount).toFixed(2)}</Text></View>)}
+    <Text style={[styles.total, { marginTop: 12 }]}>Total: ${(invoice?.total ?? 0).toFixed(2)}</Text><StatusPill label={invoice?.paid ? 'PAGADO' : invoice?.sentAt ? 'ENVIADO / PENDIENTE' : 'NO PAGADO'} tone={invoice?.paid ? 'green' : 'red'} />
+    {!invoice?.paid && <Pressable style={styles.primaryButton} onPress={onPay}><Text style={styles.primaryText}>Registrar pago</Text></Pressable>}
+  </ScrollView></View></View></Modal>;
 }
 function PaymentModal({ visible, method, note, date, onDate, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; date: string; onDate: (date: string) => void; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Field label="Fecha de pago (AAAA-MM-DD)" value={date} onChangeText={onDate} /><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
@@ -594,7 +684,7 @@ const styles = StyleSheet.create({
   agendaCompactCard:{padding:8,gap:6},
   compactAction:{minHeight:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4,borderRadius:6,paddingHorizontal:7,paddingVertical:4},
   savePriceButton:{flexDirection:'row',alignItems:'center',gap:3,paddingHorizontal:8,paddingVertical:7},
-  paymentCompactAction:{backgroundColor:'#facc15'},
+  paymentCompactAction:{backgroundColor:'#86efac'},
   actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9 },
   doneAction: { backgroundColor: '#86efac' },
   payAction: { backgroundColor: '#bbf7d0' },

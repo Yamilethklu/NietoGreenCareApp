@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
-import { siteUrl } from '../services/admin';
+import { adminRequest, shareInvoice, siteUrl } from '../services/admin';
 
-type House = { id: string; client: string; phone: string; email: string; address: string; service: string; notes?: string; details?: string; frequency?: string; price?: number; active?: boolean };
+type House = { id: string; planId?: string; client: string; phone: string; email: string; address: string; service: string; notes?: string; details?: string; frequency?: string; price?: number; active?: boolean };
 type Order = { id: string; houseId: string; date: string; status: string; price: number; paidAmount: number; invoiceId?: string; notes?: string };
 type Invoice = { id: string; houseId: string; orderIds: string[]; total: number; paid: boolean; sentAt?: string | null };
 
@@ -12,7 +12,7 @@ const phone = (value: string) => value.replace(/\D/g, '').slice(-10);
 const button = { backgroundColor: '#15803d', padding: 12, borderRadius: 8, marginTop: 8 } as const;
 const field = { borderWidth: 1, borderColor: '#cbd5e1', padding: 10, borderRadius: 8, backgroundColor: '#ffffff', color: '#111827', marginTop: 8 } as const;
 
-export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void }) {
+export function CustomerHistory({ houses, orders, invoices, session, reload, focusHouseId, onFocused, onEditHouse }: { houses: House[]; orders: Order[]; invoices: Invoice[]; session: Session | null; reload: () => Promise<void>; focusHouseId?: string | null; onFocused?: () => void; onEditHouse?: (house: House) => void }) {
   const [search, setSearch] = useState('');
   const [customer, setCustomer] = useState('');
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -22,6 +22,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const [orderPrices, setOrderPrices] = useState<Record<string, string>>({});
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [newOrderDate, setNewOrderDate] = useState('');
+  const [newOrderService, setNewOrderService] = useState('');
   const [newOrderPrice, setNewOrderPrice] = useState('');
   const [newOrderNote, setNewOrderNote] = useState('');
   const [message, setMessage] = useState('');
@@ -83,6 +84,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const createOneTimeOrder = async () => {
     if (!primary) return;
     const price = Number(newOrderPrice || primary.price || 0);
+    if (!newOrderService.trim()) { setMessage('Escribe el tipo de servicio extraordinario.'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newOrderDate) || Number.isNaN(Date.parse(newOrderDate))) {
       setMessage('La fecha debe tener el formato AAAA-MM-DD.');
       return;
@@ -105,10 +107,11 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
       cadence: 'one_time',
       first_date: newOrderDate,
       price,
-      notes: newOrderNote || primary.notes || null,
+      notes: [`Servicio: ${newOrderService.trim()}`, newOrderNote.trim() ? `Nota: ${newOrderNote.trim()}` : ''].filter(Boolean).join('\n'),
     });
     setNewOrderOpen(false);
     setNewOrderDate('');
+    setNewOrderService('');
     setNewOrderPrice('');
     setNewOrderNote('');
   };
@@ -137,6 +140,12 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
             Las visitas se muestran según el calendario automático semanal o quincenal que ya se genera desde el plan del cliente.
           </Text>
 
+          <Pressable style={[button, { backgroundColor: '#eab308' }]} onPress={() => onEditHouse?.(primary)}>
+            <Text style={{ color: '#422006', fontWeight: '800' }}>Editar casa / cliente</Text>
+          </Pressable>
+          <Pressable style={[button, { backgroundColor: '#b91c1c' }]} disabled={busy} onPress={() => Alert.alert('Eliminar casa', 'La casa se archivará marcándola como cancelada y se pausarán sus visitas futuras. Por seguridad, el historial, las órdenes y las facturas no se borrarán.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Archivar casa', style: 'destructive', onPress: () => void (async () => { setBusy(true); try { if (primary.planId) await adminRequest('operations', 'POST', { action: 'plan_update', id: primary.planId, changes: { active: false } }); await adminRequest('leads', 'PATCH', { id: primary.id, changes: { status: 'cancelled' } }); await reload(); setMessage('Casa archivada; el historial y las facturas se conservaron.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo archivar la casa.'); } finally { setBusy(false); } })() }])}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Eliminar casa (conservar historial)</Text>
+          </Pressable>
           <Link href={{ pathname: '/historial/[propertyId]', params: { propertyId: primary.id } }} asChild>
             <Pressable style={button}>
               <Text style={{ color: '#fff' }}>Ver historial completo de esta propiedad</Text>
@@ -151,6 +160,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
         {newOrderOpen && (
           <View style={{ marginTop: 10, borderWidth: 1, borderColor: '#dcfce7', borderRadius: 8, padding: 10, backgroundColor: '#fff' }}>
             <Text style={{ fontWeight: '800' }}>Servicio extraordinario</Text>
+            <TextInput accessibilityLabel="Tipo de servicio extraordinario" style={field} placeholder="Tipo de trabajo (p. ej. limpieza, poda, etc.)" value={newOrderService} onChangeText={setNewOrderService} />
             <TextInput accessibilityLabel="Fecha nueva orden" style={field} placeholder="Fecha AAAA-MM-DD" value={newOrderDate} onChangeText={setNewOrderDate} />
             <TextInput accessibilityLabel="Precio nueva orden" keyboardType="decimal-pad" style={field} placeholder="Precio" value={newOrderPrice} onChangeText={setNewOrderPrice} />
             <TextInput accessibilityLabel="Nota nueva orden" style={field} placeholder="Nota opcional" value={newOrderNote} onChangeText={setNewOrderNote} />
@@ -279,6 +289,9 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
               </>
             )}
 
+            <Pressable style={[button, { backgroundColor: '#eab308' }]} disabled={busy} onPress={() => void shareInvoice(invoice.id).catch((error) => setMessage(error instanceof Error ? error.message : 'No se pudo descargar el PDF.'))}>
+              <Text style={{ color: '#422006', fontWeight: '800' }}>Ver / descargar PDF de factura</Text>
+            </Pressable>
             <Pressable style={button} disabled={busy || Boolean(invoice.sentAt) || editing === invoice.id} onPress={() => void request('invoices', { action: 'send', invoice_id: invoice.id })}>
               <Text style={{ color: '#fff' }}>Enviar factura al cliente</Text>
             </Pressable>
