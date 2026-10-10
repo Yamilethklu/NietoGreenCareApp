@@ -294,7 +294,8 @@ export default function HomeScreen() {
     const price = Number(priceText);
     if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('La fecha debe tener el formato AAAA-MM-DD.');
     if (!Number.isFinite(price) || price < order.paidAmount) throw new Error('El precio debe ser válido y no menor que los pagos recibidos.');
-    const ok = await updateOrder(order.id, { service_date: date, price, notes: notes.trim() || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
+    const workNotes = [`Servicio: ${order.service || 'Servicio general'}`, notes.trim() ? `Nota: ${notes.trim()}` : ''].filter(Boolean).join('\n');
+    const ok = await updateOrder(order.id, { service_date: date, price, notes: workNotes || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
     if (!ok) throw new Error('No se pudo guardar la orden. Revisa la conexión y la disponibilidad del horario.');
     setEditingOrder(null);
     await loadData();
@@ -350,7 +351,7 @@ export default function HomeScreen() {
         await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: workNotes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
       }
-      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
+      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:firstDate,price:house.price,notes:workNotes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
   }
@@ -362,15 +363,18 @@ export default function HomeScreen() {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return;
     const hasPayment = invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0);
-    if (invoice.paid || hasPayment || invoice.sentAt) {
-      setMessage('Solo se pueden eliminar facturas no enviadas y sin pagos registrados.');
+    if (invoice.paid || hasPayment) {
+      setMessage('No se puede eliminar una factura con pagos registrados.');
       return;
     }
-    Alert.alert('Eliminar factura', 'La factura se eliminará y sus visitas quedarán disponibles para incluirlas en otra factura. Esta acción no se puede deshacer.', [
+    const wasSent = Boolean(invoice.sentAt);
+    Alert.alert('Eliminar factura', wasSent
+      ? 'Esta factura ya se envió al cliente. Solo se eliminará si sigue totalmente impaga; el correo enviado no se puede retirar. Esta acción no se puede deshacer.'
+      : 'La factura se eliminará y sus visitas quedarán disponibles para incluirlas en otra factura. Esta acción no se puede deshacer.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => void (async () => {
         try {
-          await adminRequest('operations/invoices', 'POST', { action: 'delete', invoice_id: invoiceId });
+          await adminRequest('operations/invoices', 'POST', { action: 'delete', invoice_id: invoiceId, confirm_sent_unpaid: wasSent });
           await loadData();
           setMessage('Factura eliminada. Las visitas quedaron disponibles para facturarse de nuevo.');
         } catch (error) {
@@ -403,7 +407,9 @@ export default function HomeScreen() {
       return;
     }
     const order = orders.find(item => item.id === paymentTarget.id);
-    if (!order || !(await updateOrder(order.id, { paid_amount: order.price, payment_method: dbPay(paymentMethod), paid_at: `${paymentDate}T12:00:00.000Z`, notes: paymentNote || order.notes || null }))) return;
+    if (!order) return;
+    const paymentNotes = [`Servicio: ${order.service || 'Servicio general'}`, order.notes?.trim() ? `Nota: ${order.notes.trim()}` : '', paymentNote.trim() ? `Nota de pago: ${paymentNote.trim()}` : ''].filter(Boolean).join('\n');
+    if (!(await updateOrder(order.id, { paid_amount: order.price, payment_method: dbPay(paymentMethod), paid_at: `${paymentDate}T12:00:00.000Z`, notes: paymentNotes || null }))) return;
     await loadData();
     setPaymentTarget(null); setPaymentNote('');
   }
@@ -522,9 +528,9 @@ export default function HomeScreen() {
       <PanelNavigation open={menuOpen} worker={role==='worker'} active={tab} onClose={()=>setMenuOpen(false)} onSelect={next=>{setTab(next);contentRef.current?.scrollTo({y:0,animated:false});}} onWebsite={()=>openExternalUrl(siteUrl)} onSignOut={()=>void signOut()} onReminder={()=>void enableNotifications()} />
       <ScrollView ref={contentRef} contentContainerStyle={styles.content}>
         <View style={styles.syncNotice}><Ionicons name="cloud-outline" size={16} color="#64748b"/><Text accessibilityLiveRegion="polite" style={styles.syncText}>{message}</Text></View>
-        {tab === 'clientes' && <>{role === 'admin' && <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={() => setEditingHouse({ id: '', client: '', address: '', city: '', zipCode: '', phone: '', email: '', frequency: 'Cada 7 dias', service: 'Corte de yarda', price: 0, active: true, notes: '', details: '' })}><Text style={styles.primaryText}>+ Agregar casa nueva</Text></Pressable>}<CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} onEditHouse={(house) => setEditingHouse({ ...house, frequency: house.frequency ?? 'Cada 7 dias', price: house.price ?? 0, active: house.active ?? true, notes: house.notes ?? '', details: house.details ?? '' })} /></>}
+        {tab === 'clientes' && <>{role === 'admin' && <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={() => setEditingHouse({ id: '', client: '', address: '', city: '', zipCode: '', phone: '', email: '', frequency: 'Cada 7 dias', service: 'Corte de yarda', price: 0, active: true, notes: '', details: '' })}><Text style={styles.primaryText}>+ Agregar casa nueva</Text></Pressable>}<CustomerHistory houses={houses} orders={orders} invoices={invoices} session={session} reload={loadData} focusHouseId={historyFocusHouseId} onFocused={() => setHistoryFocusHouseId(null)} onEditHouse={(house) => setEditingHouse({ ...house, frequency: house.frequency ?? 'Cada 7 dias', price: house.price ?? 0, active: house.active ?? true, notes: house.notes ?? '', details: house.details ?? '' })} onInvoiceDetail={(invoiceId) => setInvoiceDetailId(invoiceId)} /></>}
         {tab === 'agenda' && <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Agenda del Día</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable accessibilityRole="button" accessibilityLabel="Elegir fecha de la agenda" style={styles.smallButton} onPress={() => setAgendaCalendarOpen(true)}><Ionicons name="calendar-outline" size={16} color="#14532d" /><Text style={styles.smallButtonText}>{selectedDate}</Text></Pressable><Pressable accessibilityRole="button" style={styles.smallButton} onPress={() => setSelectedDate(texasDate())}><Text style={styles.smallButtonText}>Hoy</Text></Pressable></View></View><Text style={styles.cardMeta}>Trabajos programados para {selectedDate}</Text>{visibleOrders.map((order) => renderAgendaOrder(order))}{!visibleOrders.length && <EmptyState text={`No hay trabajos agendados para ${selectedDate}`} />}</>}
-        {tab === 'invoices' && <><SectionTitle title="Facturas y pagos" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => { setInvoiceFilter(item); setInvoicePage(0); }}><Text style={styles.segmentText}>{item === 'todos' ? 'Todas' : item === 'pagado' ? 'Pagadas' : 'Sin pagar'}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : invoice.sentAt ? 'ENVIADA' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setInvoiceDetailId(invoice.id)], ['send-outline', invoice.sentAt ? '#cbd5e1' : '#0f766e', () => void sendInvoice(invoice.id), Boolean(invoice.sentAt)], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => void deleteInvoice(invoice.id), Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)]]} /></Card>)}{sortedInvoices.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 16 }}><Pressable accessibilityRole="button" disabled={invoicePageStart === 0} style={[styles.smallButton, invoicePageStart === 0 && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => Math.max(0, page - 1))}><Text style={styles.smallButtonText}>Más recientes</Text></Pressable><Text style={styles.cardMeta}>{invoicePageStart + 1}–{Math.min(invoicePageStart + 50, sortedInvoices.length)} de {sortedInvoices.length}</Text><Pressable accessibilityRole="button" disabled={invoicePageStart + 50 >= sortedInvoices.length} style={[styles.smallButton, invoicePageStart + 50 >= sortedInvoices.length && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => page + 1)}><Text style={styles.smallButtonText}>Anteriores</Text></Pressable></View>}{!filteredInvoices.length && <EmptyState text="No hay facturas para este filtro." />}</>}
+        {tab === 'invoices' && <><SectionTitle title="Facturas y pagos" /><View style={styles.segment}>{(['todos', 'pagado', 'no_pagado'] as const).map((item) => <Pressable key={item} style={[styles.segmentButton, invoiceFilter === item && styles.segmentActive]} onPress={() => { setInvoiceFilter(item); setInvoicePage(0); }}><Text style={styles.segmentText}>{item === 'todos' ? 'Todas' : item === 'pagado' ? 'Pagadas' : 'Sin pagar'}</Text></Pressable>)}</View>{filteredInvoices.map((invoice) => <Card key={invoice.id} title={getHouse(invoice.houseId)?.client ?? 'Cliente'} meta={`${invoice.number ?? invoice.id} - ${invoice.createdAt}`} status={invoice.paid ? 'PAGADO' : invoice.sentAt ? 'ENVIADA' : 'NO PAGADO'} tone={invoice.paid ? 'green' : 'red'}><Text style={styles.total}>${invoice.total.toFixed(2)}</Text><Actions items={[['eye-outline', '#2563eb', () => setInvoiceDetailId(invoice.id)], ['send-outline', invoice.sentAt ? '#cbd5e1' : '#0f766e', () => void sendInvoice(invoice.id), Boolean(invoice.sentAt)], ['document-attach-outline', '#eab308', () => void shareInvoice(invoice.id).catch(error => setMessage(error.message))], ['trash-outline', '#dc2626', () => void deleteInvoice(invoice.id), invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)]]} /></Card>)}{sortedInvoices.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 16 }}><Pressable accessibilityRole="button" disabled={invoicePageStart === 0} style={[styles.smallButton, invoicePageStart === 0 && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => Math.max(0, page - 1))}><Text style={styles.smallButtonText}>Más recientes</Text></Pressable><Text style={styles.cardMeta}>{invoicePageStart + 1}–{Math.min(invoicePageStart + 50, sortedInvoices.length)} de {sortedInvoices.length}</Text><Pressable accessibilityRole="button" disabled={invoicePageStart + 50 >= sortedInvoices.length} style={[styles.smallButton, invoicePageStart + 50 >= sortedInvoices.length && { opacity: 0.45 }]} onPress={() => setInvoicePage((page) => page + 1)}><Text style={styles.smallButtonText}>Anteriores</Text></Pressable></View>}{!filteredInvoices.length && <EmptyState text="No hay facturas para este filtro." />}</>}
         {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
