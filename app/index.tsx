@@ -109,15 +109,36 @@ export default function HomeScreen() {
     if (!session || !role || !supabase) return;
     setMessage('Verificando acceso...');
     void (async () => {
-      const result = role === 'admin'
-        ? await supabase!.rpc('is_admin')
-        : await supabase!.from('crew_members').select('id').eq('active', true).ilike('email', session.user.email ?? '').limit(1);
+      const timeoutMs = 15000;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const verification = role === 'admin'
+          ? supabase!.rpc('is_admin')
+          : supabase!.from('crew_members').select('id').eq('active', true).ilike('email', session.user.email ?? '').limit(1);
+        const result = await Promise.race([
+          verification,
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('La verificación tardó más de 15 segundos. Comprueba tu conexión e inténtalo de nuevo.')), timeoutMs);
+          }),
+        ]);
+        if (!active) return;
+        const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
+        setAuthorized(allowed);
+        if (allowed) setTab('agenda');
+        else if (result.error) {
+          // Keep the user-facing message actionable without exposing tokens or secrets.
+          const code = 'code' in result.error && result.error.code ? ` Código: ${result.error.code}.` : '';
+          setMessage(`Falló la verificación del acceso.${code} Cierra sesión, vuelve a entrar y, si continúa, comparte este mensaje con soporte.`);
+        } else {
+          setMessage('Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
+        }
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    })().catch((error: unknown) => {
       if (!active) return;
-      const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
-      setAuthorized(allowed);
-      if (allowed) setTab('agenda');
-      else setMessage(result.error ? 'No se pudo verificar tu acceso. Intenta de nuevo.' : 'Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
-    })().catch(() => active && setMessage('No se pudo verificar tu acceso. Revisa tu conexión.'));
+      setMessage(error instanceof Error ? error.message : 'No se pudo verificar tu acceso. Revisa tu conexión e inténtalo de nuevo.');
+    });
     return () => { active = false; };
   }, [session, role]);
   useEffect(() => { if (session && authorized) void loadData(); }, [session, authorized]);
