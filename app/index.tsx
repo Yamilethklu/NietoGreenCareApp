@@ -130,7 +130,9 @@ export default function HomeScreen() {
           const code = 'code' in result.error && result.error.code ? ` Código: ${result.error.code}.` : '';
           setMessage(`Falló la verificación del acceso.${code} Cierra sesión, vuelve a entrar y, si continúa, comparte este mensaje con soporte.`);
         } else {
-          setMessage('Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
+          setMessage(role === 'admin'
+            ? `El servidor respondió que esta cuenta no es administradora. Correo detectado por la app: ${session.user.email?.trim() || 'no disponible'}. Si aparece yamilethklunder@gmail.com, hay que comprobar que la app y el sitio usan el mismo proyecto Supabase y que la función is_admin está actualizada.`
+            : 'Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
         }
       } finally {
         if (timeoutId) clearTimeout(timeoutId);
