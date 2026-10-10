@@ -22,6 +22,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const [orderPrices, setOrderPrices] = useState<Record<string, string>>({});
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [newOrderDate, setNewOrderDate] = useState('');
+  const [newOrderService, setNewOrderService] = useState('');
   const [newOrderPrice, setNewOrderPrice] = useState('');
   const [newOrderNote, setNewOrderNote] = useState('');
   const [message, setMessage] = useState('');
@@ -83,6 +84,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const createOneTimeOrder = async () => {
     if (!primary) return;
     const price = Number(newOrderPrice || primary.price || 0);
+    if (!newOrderService.trim()) { setMessage('Escribe el tipo de servicio extraordinario.'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newOrderDate) || Number.isNaN(Date.parse(newOrderDate))) {
       setMessage('La fecha debe tener el formato AAAA-MM-DD.');
       return;
@@ -105,10 +107,11 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
       cadence: 'one_time',
       first_date: newOrderDate,
       price,
-      notes: newOrderNote || primary.notes || null,
+      notes: [`Servicio: ${newOrderService.trim()}`, newOrderNote.trim() ? `Nota: ${newOrderNote.trim()}` : ''].filter(Boolean).join('\n'),
     });
     setNewOrderOpen(false);
     setNewOrderDate('');
+    setNewOrderService('');
     setNewOrderPrice('');
     setNewOrderNote('');
   };
@@ -157,6 +160,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
         {newOrderOpen && (
           <View style={{ marginTop: 10, borderWidth: 1, borderColor: '#dcfce7', borderRadius: 8, padding: 10, backgroundColor: '#fff' }}>
             <Text style={{ fontWeight: '800' }}>Servicio extraordinario</Text>
+            <TextInput accessibilityLabel="Tipo de servicio extraordinario" style={field} placeholder="Tipo de trabajo (p. ej. limpieza, poda, etc.)" value={newOrderService} onChangeText={setNewOrderService} />
             <TextInput accessibilityLabel="Fecha nueva orden" style={field} placeholder="Fecha AAAA-MM-DD" value={newOrderDate} onChangeText={setNewOrderDate} />
             <TextInput accessibilityLabel="Precio nueva orden" keyboardType="decimal-pad" style={field} placeholder="Precio" value={newOrderPrice} onChangeText={setNewOrderPrice} />
             <TextInput accessibilityLabel="Nota nueva orden" style={field} placeholder="Nota opcional" value={newOrderNote} onChangeText={setNewOrderNote} />
