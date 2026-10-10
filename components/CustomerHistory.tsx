@@ -300,7 +300,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
               <Text style={{ color: '#fff' }}>Registrar pago conjunto</Text>
             </Pressable>
 
-            <Pressable style={[button, { backgroundColor: '#dc2626' }]} disabled={busy || Boolean(invoice.sentAt) || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)} onPress={() => Alert.alert('Eliminar factura', 'La factura se eliminará y las visitas quedarán disponibles para una nueva factura.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => void request('invoices', { action: 'delete', invoice_id: invoice.id }) }])}>
+            <Pressable style={[button, { backgroundColor: '#dc2626' }]} disabled={busy || invoice.paid || invoice.orderIds.some((id) => Number(orders.find((order) => order.id === id)?.paidAmount ?? 0) > 0)} onPress={() => Alert.alert('Eliminar factura', invoice.sentAt ? 'Esta factura ya se envió al cliente. Solo se eliminará si sigue totalmente impaga; el correo enviado no se puede retirar. ¿Deseas continuar?' : 'La factura se eliminará y las visitas quedarán disponibles para una nueva factura.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => void request('invoices', { action: 'delete', invoice_id: invoice.id, confirm_sent_unpaid: Boolean(invoice.sentAt) }) }])}>
               <Text style={{ color: '#fff' }}>Eliminar factura</Text>
             </Pressable>
           </View>
