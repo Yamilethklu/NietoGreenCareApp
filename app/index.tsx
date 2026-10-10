@@ -428,11 +428,11 @@ export default function HomeScreen() {
           <Ionicons name="checkmark-done-outline" size={17} color="#052e16" />
           <Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Estado'} ▾</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.8 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" disabled={order.paid} style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
           <Ionicons name="cash-outline" size={17} color="#422006" />
           <Text style={[styles.actionText, { color: '#422006' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Abrir expediente e historial del cliente" style={[styles.compactAction, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Abrir expediente e historial del cliente" disabled={order.paid} style={[styles.compactAction, styles.historyAction, order.paid && { opacity: 0.45 }]} onPress={() => openCustomerHistory(order.houseId)}>
           <Ionicons name="albums-outline" size={17} color="#ffffff" />
           <Text style={[styles.actionText, styles.lightActionText]}>Expediente</Text>
         </Pressable>
