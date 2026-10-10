@@ -331,6 +331,14 @@ export default function HomeScreen() {
     try {
       const cadence = house.frequency === 'Cada 7 dias' ? 'weekly' : house.frequency === 'Cada 14 dias' ? 'bi_weekly' : house.frequency === 'Cada 8 dias' ? 'every_8_days' : house.frequency === 'Cada 15 dias' ? 'every_15_days' : house.frequency === 'Una vez' ? 'one_time' : null;
       if(!cadence) throw new Error('Seleccione una frecuencia válida.');
+      if (!house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) {
+        const created = await adminRequest('operations', 'POST', { action: 'house', house: { customer_name: house.client.trim(), customer_phone: house.phone.trim(), customer_email: house.email.trim() || null, address: house.address.trim(), city: house.city?.trim() || '', zip_code: house.zipCode?.trim() || '' } });
+        const leadId = String(created?.id ?? '');
+        if (!leadId) throw new Error('No se recibió el identificador de la casa para crear el plan.');
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
+        await loadData(); setEditingHouse(null); setMessage('Casa creada con recurrencia exacta.'); return;
+      }
+      if (house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) throw new Error('La API del sitio no permite actualizar una casa existente a frecuencia cada 8 o 15 días. No se guardaron cambios.');
       await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:{customer_name:house.client.trim(),customer_phone:house.phone.trim(),customer_email:house.email.trim()||null,address:house.address.trim(),city:house.city?.trim()||'',zip_code:house.zipCode?.trim()||''},cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
