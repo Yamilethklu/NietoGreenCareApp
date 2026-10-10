@@ -350,7 +350,7 @@ export default function HomeScreen() {
         await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: firstDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: workNotes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
       }
-      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
+      await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:housePayload,cadence,first_date:firstDate,price:house.price,notes:workNotes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
   }
