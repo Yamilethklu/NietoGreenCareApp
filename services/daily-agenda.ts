@@ -7,6 +7,23 @@ export function texasDate(now = new Date()) {
 
 Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
 
+async function ensureNotificationPermission(channelId = 'new-requests') {
+  if (Platform.OS === 'web') return false;
+  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync(channelId, { name: 'Solicitudes nuevas', importance: Notifications.AndroidImportance.HIGH });
+  const current = await Notifications.getPermissionsAsync();
+  const permission = current.granted ? current : await Notifications.requestPermissionsAsync();
+  return permission.granted;
+}
+
+export async function notifyNewRequest(title: string, body: string) {
+  if (!(await ensureNotificationPermission())) return false;
+  await Notifications.scheduleNotificationAsync({
+    content: { title, body, sound: 'default', data: { screen: 'solicitudes' } },
+    trigger: null,
+  });
+  return true;
+}
+
 export async function enableDailyReminder() {
   if (Platform.OS === 'web') return false;
   if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('daily-work', { name: 'Agenda de trabajos', importance: Notifications.AndroidImportance.DEFAULT });
