@@ -26,6 +26,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
   const [newOrderNote, setNewOrderNote] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invoiceHistoryFilter, setInvoiceHistoryFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
 
   const customers = Array.from(new Map(houses.map((house) => [phone(house.phone) || house.id, house])).entries());
 
@@ -231,7 +232,19 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
           ))}
         </View>
 
-        {invoices.filter((invoice) => ids.has(invoice.houseId)).map((invoice) => (
+        <Text style={{ marginTop: 16, fontWeight: '800' }}>Invoices del cliente</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          {([
+            ['todos', 'Todos'],
+            ['pagado', 'Pagados'],
+            ['no_pagado', 'No pagados'],
+          ] as const).map(([value, label]) => (
+            <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: invoiceHistoryFilter === value }} style={[field, { backgroundColor: invoiceHistoryFilter === value ? '#bbf7d0' : '#fff' }]} onPress={() => setInvoiceHistoryFilter(value)}>
+              <Text>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {invoices.filter((invoice) => ids.has(invoice.houseId) && (invoiceHistoryFilter === 'todos' || (invoiceHistoryFilter === 'pagado' ? invoice.paid : !invoice.paid))).map((invoice) => (
           <View key={invoice.id} style={field}>
             <Text>{invoice.orderIds.map((id) => orders.find((order) => order.id === id)?.date).join(' · ')}</Text>
             <Text>${invoice.total.toFixed(2)} · {invoice.paid ? 'Pagada' : 'Pendiente'}</Text>
