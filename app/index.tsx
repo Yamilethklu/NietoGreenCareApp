@@ -2,7 +2,7 @@ import { PanelNavigation, panelSections, type PanelTab } from '../components/Pan
 import { AdminManagement } from '../components/AdminManagement';
 import { shareInvoice, adminRequest, siteUrl } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
-import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
+import { texasDate, enableDailyReminder, disableDailyReminder, notifyNewRequest, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import * as Updates from 'expo-updates';
@@ -41,6 +41,7 @@ export default function HomeScreen() {
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const loadingRef = useRef(false);
   const reloadRequestedRef = useRef(false);
+  const knownLeadIdsRef = useRef(new Set<string>());
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role>('admin');
   const [authorized, setAuthorized] = useState(false);
@@ -135,6 +136,23 @@ export default function HomeScreen() {
   }, [session, role]);
   useEffect(() => { if (session && authorized) void loadData(); }, [session, authorized]);
   useEffect(() => { if (session && authorized && role === 'worker') void loadData(); }, [selectedDate]);
+  useEffect(() => {
+    if (!supabase || !session || !authorized || role !== 'admin') return;
+    const channel = supabase
+      .channel('mobile-owner-new-requests')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, payload => {
+        const lead = payload.new as Partial<LeadRow>;
+        if (!lead.id || knownLeadIdsRef.current.has(lead.id)) return;
+        knownLeadIdsRef.current.add(lead.id);
+        const customer = lead.customer_name || 'Cliente nuevo';
+        const address = lead.address || 'Dirección pendiente';
+        void notifyNewRequest('Nueva solicitud', `${customer} · ${address}`);
+        setMessage(`Nueva solicitud recibida: ${customer}.`);
+        void loadData();
+      })
+      .subscribe();
+    return () => { void supabase?.removeChannel(channel); };
+  }, [session?.user.id, authorized, role]);
   refreshRef.current = loadData;
   useEffect(() => {
     if (!session || !authorized) return;
@@ -172,8 +190,8 @@ export default function HomeScreen() {
     return true;
   }).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)), [orders, requestDateFilter, orderStatusFilter, orderWorkerFilter]);
   const visibleLeads = useMemo(() => leads.filter((lead) => lead.status !== 'cancelled'), [leads]);
-  const specialServiceLeads = useMemo(() => visibleLeads.filter(isSpecialServiceLead), [visibleLeads]);
-  const quoteLeads = useMemo(() => visibleLeads.filter((lead) => !isSpecialServiceLead(lead)), [visibleLeads]);
+  const specialServiceLeads = useMemo(() => visibleLeads.filter((lead) => lead.status === 'pending' && isSpecialServiceLead(lead)), [visibleLeads]);
+  const quoteLeads = useMemo(() => visibleLeads.filter((lead) => lead.status === 'pending' && !isSpecialServiceLead(lead)), [visibleLeads]);
   const sortedInvoices = useMemo(() => invoices.filter((invoice) => invoiceFilter === 'todos' || (invoiceFilter === 'pagado' ? invoice.paid : !invoice.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [invoiceFilter, invoices]);
   const invoicePageStart = Math.min(invoicePage, Math.max(0, Math.ceil(sortedInvoices.length / 50) - 1)) * 50;
   const filteredInvoices = useMemo(() => sortedInvoices.slice(invoicePageStart, invoicePageStart + 50), [sortedInvoices, invoicePageStart]);
@@ -258,6 +276,7 @@ export default function HomeScreen() {
     const ordersById = new Map((orderRows.data ?? []).map((row) => [String(row.id), row]));
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row) => [String(row.order_id), row]));
     setLeads(leadData.map((row) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de cesped', areaSqFt: Number(row.area_sq_ft ?? 0), details: row.details ?? '', ownerNotes: row.additional_notes ?? '', gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status ?? undefined), finalPrice: Number(row.final_price ?? 0) })));
+    knownLeadIdsRef.current = new Set(leadData.map(row => row.id));
     setHouses(leadData.map((row) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence ?? undefined), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan?.notes ?? row.additional_notes ?? '', details: row.details ?? '' }; }));
     if (workerRows.data) setWorkers(workerRows.data.map((row) => ({ id: row.id, name: row.full_name ?? 'Trabajador', email: row.email ?? '', active: Boolean(row.active ?? true) })));
     if (orderRows.data) setOrders(orderRows.data.map((row) => { const price = Number(row.price ?? 0); const paidAmount = Number(row.paid_amount ?? 0); const invoice = invoiceByOrder.get(String(row.id)); return { id: row.id, houseId: row.lead_id ?? '', date: String(row.service_date ?? texasDate()).slice(0, 10), service: (leadData.find((lead) => lead.id === row.lead_id)?.selected_services ?? ['Corte de yarda']).join(', '), price, status: mapOrderStatus(row.status ?? undefined), paid: paidAmount >= price && price > 0, paidAmount, paymentMethod: row.payment_method ?? undefined, workerId: row.crew_member_id ?? undefined, notes: row.notes ?? undefined, invoiceId: invoice?.id }; }));
@@ -456,6 +475,7 @@ export default function HomeScreen() {
       clearManualRequest();
       setSelectedDate(date);
       setTab('agenda');
+      await notifyNewRequest('Nueva solicitud guardada', `${name} · ${address}`);
       setMessage(existing ? 'Solicitud agregada al historial del cliente y a la agenda.' : 'Cliente nuevo creado y solicitud agregada a la agenda.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo guardar la nueva solicitud.');
