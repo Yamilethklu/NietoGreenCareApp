@@ -156,11 +156,14 @@ export default function HomeScreen() {
     void Linking.openURL(url).catch(() => setMessage('No se pudo abrir el enlace.'));
   }
 
-  const visibleOrders = useMemo(() => orders.filter((order) => {
-    if (order.date !== selectedDate) return false;
-    if (role === 'worker' && !workerMatches(order, session?.user.email)) return false;
-    return true;
-  }).sort((a, b) => a.id.localeCompare(b.id)), [orders, selectedDate, role, session]);
+  const visibleOrders = useMemo(() => {
+    const today = texasDate();
+    return orders.filter((order) => {
+      if (order.date !== today) return false;
+      if (role === 'worker' && !workerMatches(order, session?.user.email)) return false;
+      return true;
+    }).sort((a, b) => a.id.localeCompare(b.id));
+  }, [orders, role, session]);
   const visibleRequestOrders = useMemo(() => orders.filter((order) => {
     if (requestDateFilter && order.date !== requestDateFilter) return false;
     if (orderStatusFilter === 'unpaid' && order.paidAmount >= order.price) return false;
@@ -556,7 +559,6 @@ export default function HomeScreen() {
     return <View key={order.id} style={[styles.card, orderCardStyle(order)]}>
       <View style={styles.cardHeader}>
         <View style={styles.grow}>
-          <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text>
           <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
           <Text style={styles.ownerNote}>Nota del dueño: {ownerNote || 'Sin notas'}</Text>
         </View>
