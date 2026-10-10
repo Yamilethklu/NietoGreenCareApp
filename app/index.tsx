@@ -294,7 +294,8 @@ export default function HomeScreen() {
     const price = Number(priceText);
     if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('La fecha debe tener el formato AAAA-MM-DD.');
     if (!Number.isFinite(price) || price < order.paidAmount) throw new Error('El precio debe ser válido y no menor que los pagos recibidos.');
-    const ok = await updateOrder(order.id, { service_date: date, price, notes: notes.trim() || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
+    const workNotes = [`Servicio: ${order.service || 'Servicio general'}`, notes.trim() ? `Nota: ${notes.trim()}` : ''].filter(Boolean).join('\n');
+    const ok = await updateOrder(order.id, { service_date: date, price, notes: workNotes || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
     if (!ok) throw new Error('No se pudo guardar la orden. Revisa la conexión y la disponibilidad del horario.');
     setEditingOrder(null);
     await loadData();
@@ -406,7 +407,9 @@ export default function HomeScreen() {
       return;
     }
     const order = orders.find(item => item.id === paymentTarget.id);
-    if (!order || !(await updateOrder(order.id, { paid_amount: order.price, payment_method: dbPay(paymentMethod), paid_at: `${paymentDate}T12:00:00.000Z`, notes: paymentNote || order.notes || null }))) return;
+    if (!order) return;
+    const paymentNotes = [`Servicio: ${order.service || 'Servicio general'}`, order.notes?.trim() ? `Nota: ${order.notes.trim()}` : '', paymentNote.trim() ? `Nota de pago: ${paymentNote.trim()}` : ''].filter(Boolean).join('\n');
+    if (!(await updateOrder(order.id, { paid_amount: order.price, payment_method: dbPay(paymentMethod), paid_at: `${paymentDate}T12:00:00.000Z`, notes: paymentNotes || null }))) return;
     await loadData();
     setPaymentTarget(null); setPaymentNote('');
   }
