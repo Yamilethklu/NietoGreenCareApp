@@ -63,9 +63,6 @@ export default function HomeScreen() {
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentDate, setPaymentDate] = useState(texasDate());
   const [orderPriceDrafts, setOrderPriceDrafts] = useState<Record<string, string>>({});
-  const [orderDateDrafts, setOrderDateDrafts] = useState<Record<string, string>>({});
-  const [orderNoteDrafts, setOrderNoteDrafts] = useState<Record<string, string>>({});
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -302,41 +299,6 @@ export default function HomeScreen() {
       await loadData();
       setMessage('Precio actualizado.');
     }
-  }
-  async function saveOrderDetails(order: Order) {
-    const date = (orderDateDrafts[order.id] ?? order.date).trim();
-    const notes = (orderNoteDrafts[order.id] ?? order.notes ?? '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
-      setMessage('La fecha debe tener el formato AAAA-MM-DD.');
-      return;
-    }
-    if (await updateOrder(order.id, { service_date: date, notes: notes || null })) {
-      setOrderDateDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
-      setOrderNoteDrafts((current) => { const next = { ...current }; delete next[order.id]; return next; });
-      await loadData();
-      setEditingOrderId(null);
-      setMessage('Fecha y notas de la orden actualizadas.');
-    }
-  }
-  function deleteOrder(id: string) {
-    const order = orders.find((item) => item.id === id);
-    if (!order) return;
-    if (order.paidAmount > 0 || order.invoiceId) {
-      setMessage('No se puede eliminar una orden con pagos o factura. Elimine primero la factura pendiente si corresponde.');
-      return;
-    }
-    Alert.alert('Eliminar orden', 'La orden se eliminará de forma permanente. Esta acción no se puede deshacer.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: () => void (async () => {
-        try {
-          await adminRequest('operations', 'POST', { action: 'order_delete', id });
-          await loadData();
-          setMessage('Orden eliminada.');
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la orden.');
-        }
-      })() },
-    ]);
   }
   async function saveHouse(house: House) {
     try {
