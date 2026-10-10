@@ -198,7 +198,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
 
         {visibleHistory.map((order) => {
           const pending = order.paidAmount < order.price;
-          const eligible = pending && !order.invoiceId;
+          const eligible = order.status === 'FINALIZADA' && pending && !order.invoiceId;
           const balance = Math.max(0, order.price - order.paidAmount);
 
           return (
