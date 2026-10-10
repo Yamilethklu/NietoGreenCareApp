@@ -551,12 +551,14 @@ export default function HomeScreen() {
   }
   function renderAgendaOrder(order: Order) {
     const house = getHouse(order.houseId);
+    const acceptedOwnerNote = leads.find((lead) => lead.id === order.houseId)?.ownerNotes?.trim() ?? '';
+    const ownerNote = acceptedOwnerNote && normalizeSearch(acceptedOwnerNote) !== normalizeSearch(house?.address ?? '') ? acceptedOwnerNote : '';
     return <View key={order.id} style={[styles.card, orderCardStyle(order)]}>
       <View style={styles.cardHeader}>
         <View style={styles.grow}>
           <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text>
           <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
-          <Text style={styles.ownerNote}>Nota del dueño: {order.notes || house?.notes || 'Sin notas'}</Text>
+          <Text style={styles.ownerNote}>Nota del dueño: {ownerNote || 'Sin notas'}</Text>
         </View>
         <StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} />
       </View>
