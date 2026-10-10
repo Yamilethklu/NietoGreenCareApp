@@ -57,6 +57,7 @@ export default function HomeScreen() {
   const [invoiceFilter, setInvoiceFilter] = useState<'todos' | 'pagado' | 'no_pagado'>('todos');
   const [invoicePage, setInvoicePage] = useState(0);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [historyFocusHouseId, setHistoryFocusHouseId] = useState<string | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<{ type: 'order' | 'invoice'; id: string } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('Cash');
@@ -272,6 +273,32 @@ export default function HomeScreen() {
     }
   }
 
+  async function deleteOrder(order: Order) {
+    if (order.paid || order.paidAmount > 0 || order.invoiceId) {
+      setMessage('No se puede eliminar una orden pagada o incluida en una factura. Elimine primero la factura pendiente si corresponde.');
+      return;
+    }
+    Alert.alert('Eliminar orden', `¿Eliminar únicamente la orden del ${order.date}? La casa y las demás visitas no se modificarán.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar orden', style: 'destructive', onPress: () => void (async () => {
+        try {
+          await adminRequest('operations', 'POST', { action: 'order_delete', id: order.id });
+          await loadData();
+          setMessage('Se eliminó únicamente la orden seleccionada.');
+        } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la orden.'); }
+      })() },
+    ]);
+  }
+  async function saveOrderEdit(order: Order, date: string, priceText: string, notes: string, workerId: string, status: Status) {
+    const price = Number(priceText);
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('La fecha debe tener el formato AAAA-MM-DD.');
+    if (!Number.isFinite(price) || price < order.paidAmount) throw new Error('El precio debe ser válido y no menor que los pagos recibidos.');
+    const ok = await updateOrder(order.id, { service_date: date, price, notes: notes.trim() || null, crew_member_id: workerId || null, status: dbOrderStatus(status) });
+    if (!ok) throw new Error('No se pudo guardar la orden. Revisa la conexión y la disponibilidad del horario.');
+    setEditingOrder(null);
+    await loadData();
+    setMessage('Orden actualizada.');
+  }
   async function updateStatus(id: string, status: Status) {
     if (await updateOrder(id, { status: dbOrderStatus(status) })) await loadData();
   }
@@ -374,8 +401,10 @@ export default function HomeScreen() {
     const acceptedOwnerNote = leads.find((lead) => lead.id === order.houseId)?.ownerNotes?.trim() ?? '';
     const ownerNote = acceptedOwnerNote && normalizeSearch(acceptedOwnerNote) !== normalizeSearch(house?.address ?? '') ? acceptedOwnerNote : '';
     return <View key={order.id} style={[styles.card, styles.agendaCompactCard, orderCardStyle(order)]}>
+      <Text style={styles.cardTitle}>{house?.client ?? 'Cliente'}</Text>
       <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
-      <Text style={styles.ownerNote}>Notas privadas del dueño: {ownerNote || 'Sin notas'}</Text>
+      <Text style={styles.cardMeta}>Servicio: {order.service || house?.service || 'Servicio general'} · Fecha: {order.date}</Text>
+      <Text style={styles.ownerNote}>Notas privadas del dueño: {ownerNote || order.notes || 'Sin notas'}</Text>
       <View style={styles.priceRow}>
         <View style={styles.grow}>
           <Field label="Precio ($)" value={priceDraft(order)} keyboardType="numeric" disabled={order.paid} onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} />
@@ -399,6 +428,17 @@ export default function HomeScreen() {
           <Text style={[styles.actionText, styles.lightActionText]}>Expediente</Text>
         </Pressable>
       </View>
+      {role === 'admin' && <View style={styles.actionLabels}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Editar orden" style={[styles.compactAction, { backgroundColor: '#facc15' }]} onPress={() => setEditingOrder(order)}>
+          <Ionicons name="create-outline" size={17} color="#422006" /><Text style={[styles.actionText, { color: '#422006' }]}>Editar</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Asignar trabajador" style={[styles.compactAction, { backgroundColor: '#dbeafe' }]} onPress={() => Alert.alert('Asignar trabajador', 'Selecciona quién realizará esta visita.', [{ text: 'Sin asignar', onPress: () => void (async () => { if (await updateOrder(order.id, { crew_member_id: null })) await loadData(); })() }, ...workers.filter((worker) => worker.active).map((worker) => ({ text: worker.name, onPress: () => void (async () => { if (await updateOrder(order.id, { crew_member_id: worker.id })) await loadData(); })() })), { text: 'Cancelar', style: 'cancel' }])}>
+          <Ionicons name="person-add-outline" size={17} color="#1e3a8a" /><Text style={[styles.actionText, { color: '#1e3a8a' }]}>{workers.find((worker) => worker.id === order.workerId)?.name ?? 'Asignar'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Eliminar únicamente esta orden" disabled={order.paid || order.paidAmount > 0 || Boolean(order.invoiceId)} style={[styles.compactAction, { backgroundColor: '#fee2e2', opacity: order.paid || order.paidAmount > 0 || order.invoiceId ? 0.45 : 1 }]} onPress={() => deleteOrder(order)}>
+          <Ionicons name="trash-outline" size={17} color="#991b1b" /><Text style={[styles.actionText, { color: '#991b1b' }]}>Eliminar</Text>
+        </Pressable>
+      </View>}
     </View>;
   }
   async function ensureCurrentWeeklySummary(rows: OrderRow[]): Promise<boolean> {
@@ -469,6 +509,7 @@ export default function HomeScreen() {
         {tab === 'trabajadores' && <AdminManagement key="trabajadores" mode="trabajadores" onChanged={loadData} />}
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
+      <OrderEditModal order={editingOrder} workers={workers} onClose={() => setEditingOrder(null)} onSave={saveOrderEdit} />
       <Modal visible={agendaCalendarOpen} transparent animationType="fade" onRequestClose={() => setAgendaCalendarOpen(false)}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFill} onPress={() => setAgendaCalendarOpen(false)} /><View style={[styles.modal, { maxHeight: '85%' }]}><SectionTitle title="Elegir día de la agenda" action="Cerrar" onPress={() => setAgendaCalendarOpen(false)} /><Calendar current={selectedDate} markedDates={{ [selectedDate]: { selected: true, selectedColor: '#15803d' } }} onDayPress={({ dateString }) => { setSelectedDate(dateString); setAgendaCalendarOpen(false); }} /><Pressable style={styles.primaryButton} onPress={() => { setSelectedDate(texasDate()); setAgendaCalendarOpen(false); }}><Text style={styles.primaryText}>Volver a hoy</Text></Pressable></View></View></Modal>
       <PaymentModal visible={!!paymentTarget} method={paymentMethod} note={paymentNote} date={paymentDate} onDate={setPaymentDate} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
     </SafeAreaView>
@@ -530,6 +571,25 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
   useEffect(() => setDraft(house), [house]);
   if (!draft) return null;
   return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 7 dias','Cada 8 dias','Cada 14 dias','Cada 15 dias','Una vez'].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+}
+function OrderEditModal({ order, workers, onClose, onSave }: { order: Order | null; workers: Worker[]; onClose: () => void; onSave: (order: Order, date: string, price: string, notes: string, workerId: string, status: Status) => Promise<void> }) {
+  const [date, setDate] = useState(order?.date ?? texasDate());
+  const [price, setPrice] = useState(String(order?.price ?? 0));
+  const [notes, setNotes] = useState(order?.notes ?? '');
+  const [workerId, setWorkerId] = useState(order?.workerId ?? '');
+  const [status, setStatus] = useState<Status>(order?.status ?? 'SOLICITADO');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { setDate(order?.date ?? texasDate()); setPrice(String(order?.price ?? 0)); setNotes(order?.notes ?? ''); setWorkerId(order?.workerId ?? ''); setStatus(order?.status ?? 'SOLICITADO'); setError(''); }, [order]);
+  return <Modal visible={!!order} animationType="slide" onRequestClose={onClose}><SafeAreaView style={styles.modal}><SectionTitle title="Editar orden de trabajo" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>
+    <Field label="Fecha (AAAA-MM-DD)" value={date} onChangeText={setDate} />
+    <Field label="Precio ($)" value={price} keyboardType="numeric" onChangeText={setPrice} />
+    <Text style={styles.label}>Estado</Text><View style={styles.segment}>{(['SOLICITADO','FINALIZADA','CANCELADA'] as Status[]).map(value => <Pressable key={value} style={[styles.segmentButton, status === value && styles.segmentActive]} onPress={() => setStatus(value)}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View>
+    <Text style={styles.label}>Trabajador asignado</Text><View style={styles.segment}><Pressable style={[styles.segmentButton, !workerId && styles.segmentActive]} onPress={() => setWorkerId('')}><Text style={styles.segmentText}>Sin asignar</Text></Pressable>{workers.filter(worker => worker.active).map(worker => <Pressable key={worker.id} style={[styles.segmentButton, workerId === worker.id && styles.segmentActive]} onPress={() => setWorkerId(worker.id)}><Text style={styles.segmentText}>{worker.name}</Text></Pressable>)}</View>
+    <Field label="Notas de la orden" value={notes} onChangeText={setNotes} multiline />
+    {error ? <Text accessibilityLiveRegion="polite" style={{ color: '#b91c1c' }}>{error}</Text> : null}
+    <Pressable disabled={saving || !order} style={[styles.primaryButton, saving && { opacity: 0.5 }]} onPress={() => { if (!order || saving) return; setSaving(true); setError(''); void onSave(order, date, price, notes, workerId, status).catch(value => setError(value instanceof Error ? value.message : 'No se pudo guardar.')).finally(() => setSaving(false)); }}><Text style={styles.primaryText}>{saving ? 'Guardando…' : 'Guardar cambios'}</Text></Pressable>
+  </ScrollView></SafeAreaView></Modal>;
 }
 function PaymentModal({ visible, method, note, date, onDate, onMethod, onNote, onClose, onSave }: { visible: boolean; method: PayMethod; note: string; date: string; onDate: (date: string) => void; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Field label="Fecha de pago (AAAA-MM-DD)" value={date} onChangeText={onDate} /><View style={styles.segment}>{(['Cash', 'CashApp', 'Venmo', 'Zelle'] as PayMethod[]).map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Marcar como pagado</Text></Pressable></View></View></Modal>;
