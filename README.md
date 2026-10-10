@@ -52,7 +52,7 @@ weekly_summaries
 - La última APK publicada es la **1.1.0**; no corresponde a la configuración actual **1.1.9**. No hay una APK 1.1.9 publicada en Releases. Confirma en EAS si el build solicitado ya terminó antes de descargarlo y publicarlo; no presentes la 1.1.0 como versión actual.
 - Cuando haya una versión compatible publicada, instala su APK en el teléfono y permite la instalación desde el navegador si Android lo solicita. Se necesita conexión a internet para consultar y guardar solicitudes.
 
-El workflow `.github/workflows/android-apk.yml` es manual. Al ejecutarlo desde **Actions → Android APK** y confirmar `YES`, solo solicita un build APK `preview` en EAS y termina sin esperar; no descarga el archivo ni crea/actualiza un GitHub Release. Consulta [Distribución móvil](docs/mobile-distribution.md) para compilar, descargar y publicar una APK.
+El workflow `.github/workflows/android-apk.yml` genera una APK de Android al cambiar la configuración de compilación en `main` o cuando se ejecuta manualmente desde **Actions → Android APK** y se confirma `YES`. Espera a que EAS termine, descarga la APK y publica una GitHub Release con un tag único por ejecución. La publicación depende de `EXPO_TOKEN` y de la configuración pública de Supabase en GitHub Actions. Consulta [Distribución móvil](docs/mobile-distribution.md) para detalles.
 
 ## Actualizaciones y versiones
 
