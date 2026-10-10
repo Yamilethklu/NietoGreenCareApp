@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
-import { adminRequest, siteUrl } from '../services/admin';
+import { adminRequest, shareInvoice, siteUrl } from '../services/admin';
 
 type House = { id: string; planId?: string; client: string; phone: string; email: string; address: string; service: string; notes?: string; details?: string; frequency?: string; price?: number; active?: boolean };
 type Order = { id: string; houseId: string; date: string; status: string; price: number; paidAmount: number; invoiceId?: string; notes?: string };
@@ -285,6 +285,9 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
               </>
             )}
 
+            <Pressable style={[button, { backgroundColor: '#eab308' }]} disabled={busy} onPress={() => void shareInvoice(invoice.id).catch((error) => setMessage(error instanceof Error ? error.message : 'No se pudo descargar el PDF.'))}>
+              <Text style={{ color: '#422006', fontWeight: '800' }}>Ver / descargar PDF de factura</Text>
+            </Pressable>
             <Pressable style={button} disabled={busy || Boolean(invoice.sentAt) || editing === invoice.id} onPress={() => void request('invoices', { action: 'send', invoice_id: invoice.id })}>
               <Text style={{ color: '#fff' }}>Enviar factura al cliente</Text>
             </Pressable>
