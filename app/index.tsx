@@ -411,33 +411,32 @@ export default function HomeScreen() {
     const house = getHouse(order.houseId);
     const acceptedOwnerNote = leads.find((lead) => lead.id === order.houseId)?.ownerNotes?.trim() ?? '';
     const ownerNote = acceptedOwnerNote && normalizeSearch(acceptedOwnerNote) !== normalizeSearch(house?.address ?? '') ? acceptedOwnerNote : '';
-    return <View key={order.id} style={[styles.card, orderCardStyle(order)]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.grow}>
-          <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
-          <Text style={styles.ownerNote}>Nota del dueño: {ownerNote || 'Sin notas'}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <StatusPill label={order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Programado'} tone={order.status === 'FINALIZADA' ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} />
-          <Text style={{ backgroundColor: '#facc15', color: '#422006', fontWeight: '900', fontSize: 11, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }}>{order.paid ? 'Pagado' : 'Pendiente'}</Text>
-        </View>
-      </View>
+    return <View key={order.id} style={[styles.card, styles.agendaCompactCard, orderCardStyle(order)]}>
+      <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
+      <Text style={styles.ownerNote}>Notas privadas del dueño: {ownerNote || 'Sin notas'}</Text>
       <View style={styles.priceRow}>
-        <View style={styles.grow}><Field label="Precio" value={priceDraft(order)} keyboardType="numeric" disabled={order.paid} onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
-        <Pressable disabled={order.paid} style={[styles.smallButton, order.paid && { opacity: 0.45 }]} onPress={() => void saveOrderPrice(order)}><Text style={styles.smallButtonText}>Guardar precio</Text></Pressable>
+        <View style={styles.grow}>
+          <Field label="Precio ($)" value={priceDraft(order)} keyboardType="numeric" disabled={order.paid} onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} />
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Guardar precio" disabled={order.paid} style={[styles.smallButton, styles.savePriceButton, order.paid && { opacity: 0.45 }]} onPress={() => void saveOrderPrice(order)}>
+          <Ionicons name="save-outline" size={15} color="#052e16" />
+          <Text style={styles.smallButtonText}>Guardar</Text>
+        </Pressable>
       </View>
       <View style={styles.actionLabels}>
-        <Pressable disabled={order.paid} style={[styles.actionButton, styles.doneAction, order.paid && { opacity: 0.45 }]} onPress={() => Alert.alert('Estado del trabajo', 'Selecciona el estado', [{ text: 'Realizado', onPress: () => void updateStatus(order.id, 'FINALIZADA') }, { text: 'Cancelado', style: 'destructive', onPress: () => void updateStatus(order.id, 'CANCELADA') }, { text: 'Cerrar', style: 'cancel' }])}><Ionicons name="checkmark-done-outline" size={18} color="#052e16" /><Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado ▾' : order.status === 'CANCELADA' ? 'Cancelado ▾' : 'Estado ▾'}</Text></Pressable>
-        <Pressable disabled={order.paid} style={[styles.actionButton, { backgroundColor: order.paid ? '#fde047' : '#facc15', opacity: order.paid ? 0.65 : 1 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) setPaymentTarget({ type: 'order', id: order.id }); } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}><Ionicons name="cash-outline" size={18} color="#422006" /><Text style={styles.actionText}>{order.paid ? 'Pagado ▾' : 'Pendiente ▾'}</Text></Pressable>
-        <Pressable style={[styles.actionButton, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}><Ionicons name="albums-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Historial</Text></Pressable>
-        <Pressable disabled={order.paid} style={[styles.actionButton, { backgroundColor: '#eab308', opacity: order.paid ? 0.45 : 1 }]} onPress={() => setEditingOrderId((current) => current === order.id ? null : order.id)}><Ionicons name="create-outline" size={18} color="#422006" /><Text style={styles.actionText}>{editingOrderId === order.id ? 'Cerrar edición' : 'Editar'}</Text></Pressable>
-        <Pressable disabled={order.paid} style={[styles.actionButton, { backgroundColor: '#dc2626', opacity: order.paid ? 0.45 : 1 }]} onPress={() => deleteOrder(order.id)}><Ionicons name="trash-outline" size={18} color="#ffffff" /><Text style={[styles.actionText, styles.lightActionText]}>Eliminar</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado del trabajo" style={[styles.compactAction, styles.doneAction]} onPress={() => Alert.alert('Estado del trabajo', 'Selecciona el estado', [{ text: 'Realizado', onPress: () => void updateStatus(order.id, 'FINALIZADA') }, { text: 'Cancelado', style: 'destructive', onPress: () => void updateStatus(order.id, 'CANCELADA') }, { text: 'Cerrar', style: 'cancel' }])}>
+          <Ionicons name="checkmark-done-outline" size={17} color="#052e16" />
+          <Text style={styles.actionText}>{order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Estado'} ▾</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cambiar estado de pago" style={[styles.compactAction, styles.paymentCompactAction, order.paid && { opacity: 0.8 }]} onPress={() => Alert.alert('Estado de pago', 'Selecciona el estado de cobro', [{ text: 'Pagado', onPress: () => { if (!order.paid) { setPaymentTarget({ type: 'order', id: order.id }); setPaymentDate(texasDate()); } } }, { text: 'Pendiente', onPress: () => { void (async () => { if (await updateOrder(order.id, { paid_amount: 0, payment_method: null })) await loadData(); })(); } }, { text: 'Cerrar', style: 'cancel' }])}>
+          <Ionicons name="cash-outline" size={17} color="#422006" />
+          <Text style={[styles.actionText, { color: '#422006' }]}>{order.paid ? 'Pagado' : 'Pendiente'} ▾</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Abrir expediente e historial del cliente" style={[styles.compactAction, styles.historyAction]} onPress={() => openCustomerHistory(order.houseId)}>
+          <Ionicons name="albums-outline" size={17} color="#ffffff" />
+          <Text style={[styles.actionText, styles.lightActionText]}>Expediente</Text>
+        </Pressable>
       </View>
-      {editingOrderId === order.id && <>
-        <Field label="Fecha (AAAA-MM-DD)" value={orderDateDrafts[order.id] ?? order.date} disabled={order.paid} onChangeText={(value) => setOrderDateDrafts((current) => ({ ...current, [order.id]: value }))} />
-        <Field label="Notas de la orden" value={orderNoteDrafts[order.id] ?? (order.notes ?? '')} disabled={order.paid} onChangeText={(value) => setOrderNoteDrafts((current) => ({ ...current, [order.id]: value }))} />
-        <Pressable disabled={order.paid} style={[styles.smallButton, order.paid && { opacity: 0.45 }]} onPress={() => void saveOrderDetails(order)}><Text style={styles.smallButtonText}>Guardar edición</Text></Pressable>
-      </>}
     </View>;
   }
   async function ensureCurrentWeeklySummary(rows: OrderRow[]): Promise<boolean> {
@@ -630,6 +629,10 @@ const styles = StyleSheet.create({
   orderOps: { gap: 9 },
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   actionLabels: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  agendaCompactCard:{padding:10,gap:8},
+  compactAction:{minHeight:34,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:5,borderRadius:7,paddingHorizontal:9,paddingVertical:6},
+  savePriceButton:{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:10,paddingVertical:9},
+  paymentCompactAction:{backgroundColor:'#facc15'},
   actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9 },
   doneAction: { backgroundColor: '#86efac' },
   payAction: { backgroundColor: '#bbf7d0' },
