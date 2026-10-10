@@ -562,7 +562,10 @@ export default function HomeScreen() {
           <Text style={styles.cardMeta}>{house?.address ?? 'Dirección pendiente'}</Text>
           <Text style={styles.ownerNote}>Nota del dueño: {ownerNote || 'Sin notas'}</Text>
         </View>
-        <StatusPill label={order.paid ? 'PAGADO' : order.status} tone={order.paid ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} />
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          <StatusPill label={order.status === 'FINALIZADA' ? 'Realizado' : order.status === 'CANCELADA' ? 'Cancelado' : 'Programado'} tone={order.status === 'FINALIZADA' ? 'green' : order.status === 'CANCELADA' ? 'gray' : 'white'} />
+          <Text style={{ backgroundColor: '#facc15', color: '#422006', fontWeight: '900', fontSize: 11, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }}>{order.paid ? 'Pagado' : 'Pendiente'}</Text>
+        </View>
       </View>
       <View style={styles.priceRow}>
         <View style={styles.grow}><Field label="Precio" value={priceDraft(order)} keyboardType="numeric" onChangeText={(value) => setOrderPriceDrafts((current) => ({ ...current, [order.id]: value }))} /></View>
