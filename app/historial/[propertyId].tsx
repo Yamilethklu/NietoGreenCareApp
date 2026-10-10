@@ -92,7 +92,7 @@ export default function PropertyHistoryScreen() {
         <Text style={{ fontSize: 24, fontWeight: '900', color: '#14532d', marginTop: 18 }}>{property.address || 'Dirección no disponible'}</Text>
         <Text style={{ color: '#334155', marginTop: 6 }}>{property.customer_name || 'Cliente'} · {property.customer_phone || 'Sin teléfono'}</Text>
         {property.selected_services?.length ? <Text style={{ color: '#475569', marginTop: 4 }}>{property.selected_services.join(', ')}</Text> : null}
-        <Text style={{ fontSize: 20, fontWeight: '800', marginTop: 22 }}>Órdenes de trabajo</Text>
+        <Text style={{ fontSize: 20, fontWeight: '800', marginTop: 22 }}>Historial de trabajos</Text>
         {orders.length ? orders.map((order) => <View key={order.id} style={card}>
           <Text style={{ fontWeight: '800', color: '#0f172a' }}>{order.service_date?.slice(0, 10) || 'Sin fecha'} · {order.status || 'Sin estado'}</Text>
           <Text>Precio: ${Number(order.price ?? 0).toFixed(2)} · Pagado: ${Number(order.paid_amount ?? 0).toFixed(2)}</Text>
