@@ -51,7 +51,23 @@
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ],
-      "versionCode": 10
+      "versionCode": 10,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "nietogreencare",
+              "host": "admin"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro"
