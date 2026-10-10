@@ -48,11 +48,15 @@ weekly_summaries
 
 ## Android
 
-- [Consultar las versiones publicadas en GitHub Releases](https://github.com/Yamilethklu/NietoGreenCareApp/releases)
-- La última APK publicada es la **1.1.0**; no corresponde a la configuración actual **1.1.9**. No hay una APK 1.1.9 publicada en Releases. Confirma en EAS si el build solicitado ya terminó antes de descargarlo y publicarlo; no presentes la 1.1.0 como versión actual.
-- Cuando haya una versión compatible publicada, instala su APK en el teléfono y permite la instalación desde el navegador si Android lo solicita. Se necesita conexión a internet para consultar y guardar solicitudes.
+### Descargar la versión más reciente
 
-El workflow `.github/workflows/android-apk.yml` genera una APK de Android al cambiar la configuración de compilación en `main` o cuando se ejecuta manualmente desde **Actions → Android APK** y se confirma `YES`. Espera a que EAS termine, descarga la APK y publica una GitHub Release con un tag único por ejecución. La publicación depende de `EXPO_TOKEN` y de la configuración pública de Supabase en GitHub Actions. Consulta [Distribución móvil](docs/mobile-distribution.md) para detalles.
+**[⬇️ DESCARGAR APK PARA ANDROID — ABRIR LA ÚLTIMA VERSIÓN PUBLICADA](https://github.com/Yamilethklu/NietoGreenCareApp/releases/latest)**
+
+En esa página, abre **Assets** y selecciona el archivo `.apk`. Este enlace apunta a la última GitHub Release marcada como más reciente, por lo que no hay que cambiar el README en cada publicación. Si la compilación nueva todavía está en proceso, aparecerá la versión anterior hasta que la nueva se publique correctamente.
+
+- [Ver todas las versiones y sus APK](https://github.com/Yamilethklu/NietoGreenCareApp/releases)
+- [Ver el estado de la compilación Android](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/android-apk.yml)
+- Al instalar, Android puede pedir permiso para instalar aplicaciones desde el navegador o gestor de archivos. Se necesita conexión a internet para consultar y guardar solicitudes.
 
 ## Actualizaciones y versiones
 
