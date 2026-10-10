@@ -165,7 +165,6 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
           const pending = order.paidAmount < order.price;
           const eligible = pending && !order.invoiceId;
           const balance = Math.max(0, order.price - order.paidAmount);
-          const address = related.find((house) => house.id === order.houseId)?.address ?? primary.address;
 
           return (
             <View key={order.id} style={{ borderWidth: 1, borderColor: order.id in selected ? '#15803d' : '#e2e8f0', borderRadius: 8, padding: 10, marginTop: 10, backgroundColor: '#fff', gap: 6 }}>
@@ -176,8 +175,8 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
                 return next;
               })}>
                 <Text style={{ fontWeight: '800' }}>{eligible ? (order.id in selected ? '☑ ' : '☐ ') : ''}{order.date} · {order.status}</Text>
-                <Text>Dirección: {address}</Text>
-                <Text>{pending ? 'Pendiente' : 'Pagado'} · Pagado ${order.paidAmount.toFixed(2)} · Saldo ${balance.toFixed(2)}</Text>
+                <Text style={{ fontWeight: '700' }}>Precio: ${order.price.toFixed(2)}</Text>
+                <Text style={{ color: pending ? '#92400e' : '#166534' }}>{pending ? 'Pendiente' : 'Pagado'} · Saldo ${balance.toFixed(2)}</Text>
               </Pressable>
 
               <TextInput accessibilityLabel={`Precio ${order.date}`} keyboardType="decimal-pad" style={field} value={orderPrices[order.id] ?? String(order.price)} onChangeText={(value) => setOrderPrices((current) => ({ ...current, [order.id]: value }))} />
@@ -214,7 +213,7 @@ export function CustomerHistory({ houses, orders, invoices, session, reload, foc
         </Text>
 
         <Pressable style={button} disabled={busy || !Object.keys(selected).length || Object.values(selected).some((value) => !value.trim() || !Number.isFinite(Number(value)))} onPress={() => void request('invoice-group', { items: Object.entries(selected).map(([orderId, value]) => ({ orderId, price: Number(value) })) })}>
-          <Text style={{ color: '#fff' }}>Generar factura de fechas seleccionadas</Text>
+          <Text style={{ color: '#fff' }}>Generar 1 Solo Invoice</Text>
         </Pressable>
 
         <Text style={{ marginTop: 12 }}>Método de pago</Text>
