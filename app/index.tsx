@@ -338,7 +338,15 @@ export default function HomeScreen() {
         await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: leadId, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
         await loadData(); setEditingHouse(null); setMessage('Casa creada con recurrencia exacta.'); return;
       }
-      if (house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) throw new Error('La API del sitio no permite actualizar una casa existente a frecuencia cada 8 o 15 días. No se guardaron cambios.');
+      if (house.id && (cadence === 'every_8_days' || cadence === 'every_15_days')) {
+        const fallbackCadence = cadence === 'every_8_days' ? 'weekly' : 'bi_weekly';
+        await adminRequest('operations', 'POST', { action: 'mobile_house', id: house.id, house: housePayload, cadence: fallbackCadence, first_date: selectedDate, price: house.price, notes: house.notes || null });
+        const operations = await adminRequest('operations');
+        const priorPlans = Array.isArray(operations?.plans) ? operations.plans.filter((plan: { lead_id?: string; active?: boolean; created_at?: string }) => plan.lead_id === house.id && plan.active).sort((a: { created_at?: string }, b: { created_at?: string }) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))) : [];
+        if (priorPlans[0]?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: priorPlans[0].id, changes: { active: false } });
+        await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: house.id, crew_member_id: null, cadence, first_date: selectedDate, preferred_start: '08:00', duration_minutes: 60, price_per_visit: house.price, notes: house.notes || null } });
+        await loadData(); setEditingHouse(null); setMessage('Casa actualizada con recurrencia exacta.'); return;
+      }
       await adminRequest('operations','POST',{action:'mobile_house',id:/^[0-9a-f-]{36}$/i.test(house.id)?house.id:null,house:{customer_name:house.client.trim(),customer_phone:house.phone.trim(),customer_email:house.email.trim()||null,address:house.address.trim(),city:house.city?.trim()||'',zip_code:house.zipCode?.trim()||''},cadence,first_date:selectedDate,price:house.price,notes:house.notes||null});
       await loadData();setEditingHouse(null);setMessage('Casa y visitas futuras guardadas.');
     } catch(error){setMessage(error instanceof Error?error.message:'No se pudo guardar.');throw error;}
