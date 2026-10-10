@@ -45,7 +45,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
       - run: npm run typecheck
-      - run: node --test tests/auth.test.cjs
+      - run: node --test tests/*.test.cjs
       - name: Pass existing public app configuration to remote build
         run: |
           node <<'NODE'

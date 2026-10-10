@@ -48,11 +48,17 @@ weekly_summaries
 
 ## Android
 
-- [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.0/NietoGreenCare-Android.apk)
-- Instalar el APK en el teléfono y permitir la instalación desde el navegador si Android lo solicita.
-- Es necesaria una conexión a internet para consultar y guardar las solicitudes.
+- [Consultar las versiones publicadas en GitHub Releases](https://github.com/Yamilethklu/NietoGreenCareApp/releases)
+- La última APK publicada es la **1.1.0**; no corresponde a la configuración actual **1.1.9**. No hay una APK 1.1.9 publicada en Releases. Confirma en EAS si el build solicitado ya terminó antes de descargarlo y publicarlo; no presentes la 1.1.0 como versión actual.
+- Cuando haya una versión compatible publicada, instala su APK en el teléfono y permite la instalación desde el navegador si Android lo solicita. Se necesita conexión a internet para consultar y guardar solicitudes.
 
-Para generar una nueva APK, el flujo `.github/workflows/android-apk.yml` ejecuta TypeScript y `assembleRelease`, publica el archivo como artefacto y actualiza la descarga en GitHub Releases.
+El workflow `.github/workflows/android-apk.yml` es manual. Al ejecutarlo desde **Actions → Android APK** y confirmar `YES`, solo solicita un build APK `preview` en EAS y termina sin esperar; no descarga el archivo ni crea/actualiza un GitHub Release. Consulta [Distribución móvil](docs/mobile-distribution.md) para compilar, descargar y publicar una APK.
+
+## Actualizaciones y versiones
+
+- **OTA (EAS Update):** los cambios compatibles de JavaScript se publican automáticamente a los canales `production` (iOS y Android) y `preview` (Android) cuando se actualizan las rutas configuradas en `.github/workflows/eas-update.yml` en `main`. Llegan únicamente a builds instalados cuyo `runtimeVersion` coincide. Una OTA no reemplaza ni publica un APK/IPA y no puede instalar cambios nativos.
+- **Build nativo:** se necesita un nuevo build para cambios nativos, para distribuir una APK/IPA instalable o cuando cambia la compatibilidad del runtime. Los números de versión de la app se mantienen alineados entre `package.json` y `app.json`; EAS gestiona remotamente los números nativos de Android/iOS (`appVersionSource: remote` y `autoIncrement` en producción).
+- **iOS:** el repositorio configura builds de EAS y envío a TestFlight, pero no hay una URL pública de App Store verificada. La ejecución iOS más reciente registrada (8-oct-2026) no terminó un build porque se agotó la cuota mensual de builds iOS del plan gratuito de EAS. Verifica el estado actual directamente en App Store Connect/TestFlight; la existencia de workflows o de un envío anterior no confirma publicación de la versión actual.
 
 ## Desarrollo
 
