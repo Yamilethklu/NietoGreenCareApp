@@ -6,7 +6,7 @@ import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase, signInWithGoogle, saveRole, loadRole, clearRole } from '../services/auth';
+import { supabase, signInWithGoogle, finishGoogleSignIn, saveRole, loadRole, clearRole } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -100,6 +100,26 @@ export default function HomeScreen() {
     });
     supabase.auth.startAutoRefresh();
     return () => { cancelled = true; data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
+  }, []);
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    const completeNativeGoogleReturn = async (url: string | null) => {
+      if (!url?.startsWith('nietogreencare:')) return;
+      try {
+        // Android/iOS sometimes deliver the OAuth redirect as a Linking event
+        // instead of returning it through openAuthSessionAsync. Finishing it
+        // here prevents the app from landing back on the login screen.
+        await finishGoogleSignIn(url);
+        const { data } = await supabase!.auth.getSession();
+        if (active && data.session) setSession(data.session);
+      } catch (error) {
+        if (active) setMessage(error instanceof Error ? error.message : 'No se pudo completar el acceso con Google.');
+      }
+    };
+    const linking = Linking.addEventListener('url', ({ url }) => { void completeNativeGoogleReturn(url); });
+    void Linking.getInitialURL().then(completeNativeGoogleReturn).catch(() => {});
+    return () => { active = false; linking.remove(); };
   }, []);
   useEffect(() => {
     let active = true;
