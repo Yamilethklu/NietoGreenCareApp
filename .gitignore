@@ -5,3 +5,8 @@ dist/
 *.log
 .env.local
 .env
+
+android/app/debug.keystore
+*.keystore
+!android/app/release.keystore.example
+supabase/.temp/

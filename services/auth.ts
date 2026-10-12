@@ -79,3 +79,28 @@ async function performGoogleSignIn() {
   if (!current.session) throw new Error('Google no devolvió una sesión válida. Intenta de nuevo.');
   return true;
 }
+
+export type PanelRole = 'admin' | 'worker';
+const ROLE_KEY = 'ngc_panel_role';
+const webStorage = () => (typeof localStorage === 'undefined' ? null : localStorage);
+
+export async function saveRole(role: PanelRole) {
+  try {
+    if (Platform.OS === 'web') webStorage()?.setItem(ROLE_KEY, role);
+    else await SecureStore.setItemAsync(ROLE_KEY, role);
+  } catch { /* el rol se vuelve a elegir si no se puede persistir */ }
+}
+
+export async function loadRole(): Promise<PanelRole | null> {
+  try {
+    const value = Platform.OS === 'web' ? webStorage()?.getItem(ROLE_KEY) : await SecureStore.getItemAsync(ROLE_KEY);
+    return value === 'admin' || value === 'worker' ? value : null;
+  } catch { return null; }
+}
+
+export async function clearRole() {
+  try {
+    if (Platform.OS === 'web') webStorage()?.removeItem(ROLE_KEY);
+    else await SecureStore.deleteItemAsync(ROLE_KEY);
+  } catch { /* sin rol persistido */ }
+}

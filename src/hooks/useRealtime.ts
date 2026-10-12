@@ -1,24 +1,19 @@
-import { useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useEffect, useRef } from 'react';
+import { supabase } from '../../services/auth';
 
 export const useRealtimeTable = (
   table: string,
   onUpdateCallback: () => void
 ) => {
+  const callback = useRef(onUpdateCallback);
+  callback.current = onUpdateCallback;
   useEffect(() => {
-    const channel = supabase
+    if (!supabase) return;
+    const client = supabase;
+    const channel = client
       .channel(`realtime_${table}_channel`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: table },
-        () => {
-          onUpdateCallback();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table }, () => callback.current())
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [table, onUpdateCallback]);
+    return () => { void client.removeChannel(channel); };
+  }, [table]);
 };
