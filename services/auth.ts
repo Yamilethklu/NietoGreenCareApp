@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
@@ -34,8 +34,11 @@ function isNativeAuthCallback(parsed: URL) {
 export async function finishGoogleSignIn(callback: string) {
   const parsed = new URL(callback);
   if (!isNativeAuthCallback(parsed)) return;
+  // Safe diagnostics only: never log the callback URL, OAuth code, tokens, or email.
+  console.info('[OAuth] Native callback received.');
   const fragment = new URLSearchParams(parsed.hash.slice(1));
   if (parsed.searchParams.has('error') || fragment.has('error')) {
+    console.warn('[OAuth] Provider returned an authentication error.');
     throw new Error('Google no autorizó el acceso o el enlace ya fue utilizado. Cierra el navegador y pulsa Continuar con Google para iniciar un acceso nuevo.');
   }
   const code = parsed.searchParams.get('code') || fragment.get('code');
@@ -48,11 +51,45 @@ export async function finishGoogleSignIn(callback: string) {
     exchanges.set(code, (async () => {
       const { error } = await supabase!.auth.exchangeCodeForSession(code);
       if (error && !(await supabase!.auth.getSession()).data.session) {
+        console.warn('[OAuth] Code exchange failed.');
         throw new Error('No se pudo completar el acceso con Google. Vuelve a intentarlo.');
       }
+      console.info('[OAuth] Code exchange completed.');
     })());
   }
   await exchanges.get(code);
+}
+
+async function waitForSession(timeoutMs: number): Promise<Session | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) return data.session;
+  } catch {
+    // The auth-state listener below can still observe a successful exchange.
+  }
+
+  return new Promise<Session | null>(resolve => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let subscription: { unsubscribe: () => void } | null = null;
+    const finish = (session: Session | null) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      subscription?.unsubscribe();
+      resolve(session);
+    };
+    const listener = supabase!.auth.onAuthStateChange((_event, session) => {
+      if (session) finish(session);
+    });
+    subscription = listener.data.subscription;
+    if (settled) subscription.unsubscribe();
+    if (!settled) timer = setTimeout(() => finish(null), timeoutMs);
+    void supabase!.auth.getSession().then(({ data }) => {
+      if (data.session) finish(data.session);
+    }).catch(() => {});
+  });
 }
 
 let googleSignInPending: Promise<boolean> | null = null;
@@ -72,11 +109,28 @@ async function performGoogleSignIn() {
   });
   if (error || !data.url) throw new Error('No se pudo abrir Google. Intenta de nuevo.');
   const result = await WebBrowser.openAuthSessionAsync(data.url, authRedirect);
-  if (result.type === 'success') await finishGoogleSignIn(result.url);
+  console.info('[OAuth] Browser flow finished:', result.type);
+  if (result.type === 'success') {
+    await finishGoogleSignIn(result.url);
+  } else if (result.type === 'dismiss' || result.type === 'locked') {
+    // Android may deliver the deep link through Linking after the browser promise
+    // resolves. Wait for Supabase's auth event instead of reporting a false cancel.
+    const session = await waitForSession(10000);
+    if (!session) {
+      console.warn('[OAuth] No session observed after browser dismissal.');
+      throw new Error('Google regresó a la app, pero no se pudo confirmar la sesión. Intenta nuevamente; si persiste, comparte el diagnóstico OAuth sin códigos ni tokens.');
+    }
+  } else {
+    return false;
+  }
+
   await Promise.all([...exchanges.values()].map(exchange => exchange.catch(() => {})));
   const { data: current } = await supabase.auth.getSession();
-  if (!current.session && result.type !== 'success') return false;
-  if (!current.session) throw new Error('Google no devolvió una sesión válida. Intenta de nuevo.');
+  if (!current.session) {
+    console.warn('[OAuth] Browser returned but no Supabase session was available.');
+    throw new Error('Google no devolvió una sesión válida. Intenta de nuevo.');
+  }
+  console.info('[OAuth] Session confirmed.');
   return true;
 }
 

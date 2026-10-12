@@ -46,6 +46,7 @@ export default function HomeScreen() {
   });
 
   const [session, setSession] = useState<Session | null>(null);
+  const authEventSeen = useRef(false);
   const [role, setRoleState] = useState<Role>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const setRole = (next: Role) => { setRoleState(next); if (next) void saveRole(next); else void clearRole(); };
@@ -85,13 +86,15 @@ export default function HomeScreen() {
     if (!supabase) return;
     let cancelled = false;
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // Prevent a slower initial getSession() read from overwriting a newer OAuth event.
+      authEventSeen.current = true;
       if (event === 'SIGNED_OUT') setAuthorized(false);
       setSession(nextSession);
     });
     void (async () => {
       try {
         const { data: current } = await supabase!.auth.getSession();
-        if (cancelled) return;
+        if (cancelled || authEventSeen.current) return;
         setSession(current.session);
       } catch { if (!cancelled) setMessage('No se pudo completar el acceso. Intenta de nuevo.'); }
     })();
