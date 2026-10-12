@@ -85,7 +85,7 @@ async function waitForSession(timeoutMs: number): Promise<Session | null> {
     });
     subscription = listener.data.subscription;
     if (settled) subscription.unsubscribe();
-    timer = setTimeout(() => finish(null), timeoutMs);
+    if (!settled) timer = setTimeout(() => finish(null), timeoutMs);
     void supabase!.auth.getSession().then(({ data }) => {
       if (data.session) finish(data.session);
     }).catch(() => {});
