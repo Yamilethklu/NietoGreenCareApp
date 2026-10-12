@@ -123,17 +123,31 @@ export default function HomeScreen() {
     let active = true;
     setAuthorized(false);
     if (!session || !role || !supabase) return;
-    setMessage('Verificando acceso...');
+    const signedInEmail = session.user.email?.trim().toLowerCase() || 'correo no disponible';
+    setMessage(`Verificando acceso de ${signedInEmail}...`);
     void (async () => {
+      // Actualiza la sesión antes de consultar permisos para evitar validar con un token obsoleto.
+      let currentSession = session;
+      const refreshed = await supabase!.auth.refreshSession();
+      if (refreshed.data.session) currentSession = refreshed.data.session;
+      if (!active) return;
       const result = role === 'admin'
         ? await supabase!.rpc('is_admin')
-        : await supabase!.from('crew_members').select('id').eq('active', true).ilike('email', session.user.email ?? '').limit(1);
+        : await supabase!.from('crew_members').select('id').eq('active', true).ilike('email', currentSession.user.email ?? '').limit(1);
       if (!active) return;
       const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
       setAuthorized(allowed);
-      if (allowed) setTab(role === 'worker' ? 'agenda' : 'dashboard');
-      else setMessage(result.error ? 'No se pudo verificar tu acceso. Intenta de nuevo.' : 'Este correo no está autorizado para el panel seleccionado. Cambia de cuenta o solicita acceso al dueño.');
-    })().catch(() => active && setMessage('No se pudo verificar tu acceso. Revisa tu conexión.'));
+      if (allowed) {
+        setTab(role === 'worker' ? 'agenda' : 'dashboard');
+        setMessage('Acceso autorizado.');
+      } else if (result.error) {
+        setMessage(`No se pudo comprobar el permiso de ${signedInEmail}. Revisa la conexión de la app con Supabase y vuelve a intentar.`);
+      } else {
+        setMessage(`La sesión está abierta como ${signedInEmail}, pero Supabase no confirma permiso para este panel. Cierra sesión y vuelve a entrar seleccionando la cuenta correcta.`);
+      }
+    })().catch(() => {
+      if (active) setMessage(`No se pudo verificar el acceso de ${signedInEmail}. Revisa la conexión e inténtalo de nuevo.`);
+    });
     return () => { active = false; };
   }, [session, role]);
   useEffect(() => { if (session && authorized) void loadData(); }, [session, authorized]);
