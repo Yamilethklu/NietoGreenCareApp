@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nieto Green Care",
     "slug": "nieto-green-care",
-    "version": "1.1.4",
+    "version": "1.1.9",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "nietogreencare",
@@ -31,7 +31,7 @@
       "expo-web-browser"
     ],
     "ios": {
-      "buildNumber": "6",
+      "buildNumber": "14",
       "supportsTablet": true,
       "bundleIdentifier": "com.nietogreencare.app",
       "infoPlist": {
@@ -77,7 +77,7 @@
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/ee66ff82-78c1-4a92-801d-28ed5ec36feb"
     },
-    "runtimeVersion": "1.1.4",
+    "runtimeVersion": "1.1.9",
     "extra": {
       "router": {},
       "eas": {
