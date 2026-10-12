@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
@@ -60,7 +60,7 @@ export async function finishGoogleSignIn(callback: string) {
   await exchanges.get(code);
 }
 
-async function waitForSession(timeoutMs: number) {
+async function waitForSession(timeoutMs: number): Promise<Session | null> {
   if (!supabase) return null;
   try {
     const { data } = await supabase.auth.getSession();
@@ -69,19 +69,22 @@ async function waitForSession(timeoutMs: number) {
     // The auth-state listener below can still observe a successful exchange.
   }
 
-  return new Promise<NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']> | null>(resolve => {
+  return new Promise<Session | null>(resolve => {
     let settled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const finish = (session: NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']> | null) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let subscription: { unsubscribe: () => void } | null = null;
+    const finish = (session: Session | null) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      subscription.unsubscribe();
+      if (timer) clearTimeout(timer);
+      subscription?.unsubscribe();
       resolve(session);
     };
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+    const listener = supabase!.auth.onAuthStateChange((_event, session) => {
       if (session) finish(session);
     });
+    subscription = listener.data.subscription;
+    if (settled) subscription.unsubscribe();
     timer = setTimeout(() => finish(null), timeoutMs);
     void supabase!.auth.getSession().then(({ data }) => {
       if (data.session) finish(data.session);
