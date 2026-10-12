@@ -17,7 +17,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Permite seleccionar fotos de trabajos para la galer\u00eda.",
+          "photosPermission": "Permite seleccionar fotos de trabajos para la galería.",
           "cameraPermission": "Permite tomar fotos de trabajos terminados."
         }
       ],
@@ -26,16 +26,20 @@
         {
           "color": "#1B4332"
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-web-browser"
     ],
     "ios": {
       "buildNumber": "6",
       "supportsTablet": true,
-      "bundleIdentifier": "com.nietogreencare.app"
+      "bundleIdentifier": "com.nietogreencare.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.nietogreencare.app",
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#dcfce7"
@@ -47,6 +51,13 @@
     },
     "web": {
       "bundler": "metro"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/ee66ff82-78c1-4a92-801d-28ed5ec36feb"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "extra": {
       "router": {},

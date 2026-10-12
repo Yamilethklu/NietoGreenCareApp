@@ -1,14 +1,22 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+
+let Notifications: typeof import('expo-notifications') | null = null;
+try {
+  Notifications = require('expo-notifications');
+} catch (e) {
+  console.warn('expo-notifications no está disponible en Expo Go.');
+}
 
 export function texasDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
-Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+if (Notifications) {
+  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+}
 
 export async function enableDailyReminder() {
-  if (Platform.OS === 'web') return false;
+  if (Platform.OS === 'web' || !Notifications) return false;
   if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('daily-work', { name: 'Agenda de trabajos', importance: Notifications.AndroidImportance.DEFAULT });
   const current = await Notifications.getPermissionsAsync();
   const permission = current.granted ? current : await Notifications.requestPermissionsAsync();
@@ -23,10 +31,11 @@ export async function enableDailyReminder() {
 }
 
 export async function disableDailyReminder() {
-  if (Platform.OS !== 'web') await Notifications.cancelScheduledNotificationAsync('daily-agenda');
+  if (Platform.OS !== 'web' && Notifications) await Notifications.cancelScheduledNotificationAsync('daily-agenda');
 }
 
 export function onAgendaNotification(callback: () => void) {
+  if (!Notifications) return { remove: () => {} };
   return Notifications.addNotificationResponseReceivedListener(response => {
     if (response.notification.request.content.data?.screen === 'agenda') callback();
   });
