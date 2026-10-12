@@ -2,17 +2,11 @@ import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import { makeRedirectUri } from 'expo-auth-session';
 import { Platform } from 'react-native';
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-const redirectUrl = makeRedirectUri({
-  scheme: 'nietogreencare',
-  path: 'auth/callback',
-});
+const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
+export const authRedirect = 'nietogreencare://admin';
 
 const storage = Platform.OS === 'web' ? undefined : {
   getItem: (name: string) => SecureStore.getItemAsync(name),
@@ -27,41 +21,61 @@ export const supabase = url && key ? createClient(url, key, {
 WebBrowser.maybeCompleteAuthSession();
 
 const exchanges = new Map<string, Promise<void>>();
-export async function finishGoogleSignIn(callback: string) {
-  const parsed = Linking.parse(callback);
-  if (parsed.scheme !== 'nietogreencare') return;
-  const code = parsed.queryParams?.code as string;
-  if (!code || !supabase) return;
-  
-  const client = supabase;
-  const pending = exchanges.get(code);
-  if (pending) { await pending.catch(() => {}); return; }
-  
-  const exchange = (async () => {
-    try {
-      const { error } = await client.auth.exchangeCodeForSession(code);
-      if (error) throw error;
-    } catch {
-      throw new Error('No se pudo completar el acceso con Google.');
-    }
-  })();
-  exchanges.set(code, exchange);
-  await exchange;
+
+function isNativeAuthCallback(parsed: URL) {
+  if (parsed.protocol !== 'nietogreencare:') return false;
+  if (parsed.hostname === 'admin' && (!parsed.pathname || parsed.pathname === '/')) return true;
+  if (!parsed.hostname && (!parsed.pathname || parsed.pathname === '/' || parsed.pathname === '/admin')) return true;
+  if (parsed.hostname === 'auth' && parsed.pathname === '/callback') return true;
+  if (!parsed.hostname && parsed.pathname === '/auth/callback') return true;
+  return false;
 }
 
-export async function signInWithGoogle() {
+export async function finishGoogleSignIn(callback: string) {
+  const parsed = new URL(callback);
+  if (!isNativeAuthCallback(parsed)) return;
+  const fragment = new URLSearchParams(parsed.hash.slice(1));
+  if (parsed.searchParams.has('error') || fragment.has('error')) {
+    throw new Error('Google no autorizó el acceso o el enlace ya fue utilizado. Cierra el navegador y pulsa Continuar con Google para iniciar un acceso nuevo.');
+  }
+  const code = parsed.searchParams.get('code') || fragment.get('code');
+  if (!code) {
+    if (parsed.search || parsed.hash) throw new Error('El regreso de Google no contiene un código de acceso válido. Inicia el acceso nuevamente desde la app.');
+    return;
+  }
+  if (!supabase) throw new Error('La conexión de la app no está configurada.');
+  if (!exchanges.has(code)) {
+    exchanges.set(code, (async () => {
+      const { error } = await supabase!.auth.exchangeCodeForSession(code);
+      if (error && !(await supabase!.auth.getSession()).data.session) {
+        throw new Error('No se pudo completar el acceso con Google. Vuelve a intentarlo.');
+      }
+    })());
+  }
+  await exchanges.get(code);
+}
+
+let googleSignInPending: Promise<boolean> | null = null;
+
+export function signInWithGoogle(): Promise<boolean> {
+  if (!googleSignInPending) {
+    googleSignInPending = performGoogleSignIn().finally(() => { googleSignInPending = null; });
+  }
+  return googleSignInPending;
+}
+
+async function performGoogleSignIn() {
   if (!supabase) throw new Error('La conexión de la app no está configurada.');
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google', 
-    options: { redirectTo: redirectUrl, skipBrowserRedirect: false, queryParams: { prompt: 'select_account' } },
+    provider: 'google',
+    options: { redirectTo: authRedirect, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
   });
-  if (error || !data.url) throw new Error('No se pudo abrir Google.');
-  
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-  if (result.type === 'success' && result.url) {
-    await finishGoogleSignIn(result.url);
-  }
-  
+  if (error || !data.url) throw new Error('No se pudo abrir Google. Intenta de nuevo.');
+  const result = await WebBrowser.openAuthSessionAsync(data.url, authRedirect);
+  if (result.type === 'success') await finishGoogleSignIn(result.url);
+  await Promise.all([...exchanges.values()].map(exchange => exchange.catch(() => {})));
   const { data: current } = await supabase.auth.getSession();
-  return !!current.session;
+  if (!current.session && result.type !== 'success') return false;
+  if (!current.session) throw new Error('Google no devolvió una sesión válida. Intenta de nuevo.');
+  return true;
 }
