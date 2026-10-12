@@ -126,10 +126,9 @@ export default function HomeScreen() {
     const signedInEmail = session.user.email?.trim().toLowerCase() || 'correo no disponible';
     setMessage(`Verificando acceso de ${signedInEmail}...`);
     void (async () => {
-      // Actualiza la sesión antes de consultar permisos para evitar validar con un token obsoleto.
-      let currentSession = session;
-      const refreshed = await supabase!.auth.refreshSession();
-      if (refreshed.data.session) currentSession = refreshed.data.session;
+      // Lee la sesión persistida actual sin forzar un refresh que podría reactivar este efecto.
+      const current = await supabase!.auth.getSession();
+      const currentSession = current.data.session ?? session;
       if (!active) return;
       const result = role === 'admin'
         ? await supabase!.rpc('is_admin')
