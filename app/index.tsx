@@ -53,6 +53,7 @@ export default function HomeScreen() {
   useEffect(() => { let active = true; void loadRole().then(saved => { if (active) { if (saved) setRoleState(saved); setRoleLoaded(true); } }); return () => { active = false; }; }, []);
   const [authorized, setAuthorized] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -127,7 +128,9 @@ export default function HomeScreen() {
   useEffect(() => {
     let active = true;
     setAuthorized(false);
+    setCheckingAccess(false);
     if (!session || !role || !supabase) return;
+    setCheckingAccess(true);
     const signedInEmail = session.user.email?.trim().toLowerCase() || 'correo no disponible';
     setMessage(`Verificando acceso de ${signedInEmail}...`);
     void (async () => {
@@ -141,6 +144,7 @@ export default function HomeScreen() {
       if (!active) return;
       const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
       setAuthorized(allowed);
+      setCheckingAccess(false);
       if (allowed) {
         setTab(role === 'worker' ? 'agenda' : 'dashboard');
         setMessage('Acceso autorizado.');
@@ -150,7 +154,7 @@ export default function HomeScreen() {
         setMessage(`La sesión está abierta como ${signedInEmail}, pero Supabase no confirma permiso para este panel. Cierra sesión y vuelve a entrar seleccionando la cuenta correcta.`);
       }
     })().catch(() => {
-      if (active) setMessage(`No se pudo verificar el acceso de ${signedInEmail}. Revisa la conexión e inténtalo de nuevo.`);
+      if (active) { setCheckingAccess(false); setMessage(`No se pudo verificar el acceso de ${signedInEmail}. Revisa la conexión e inténtalo de nuevo.`); }
     });
     return () => { active = false; };
   }, [session?.user.id, role]);
@@ -380,6 +384,14 @@ export default function HomeScreen() {
     </View></SafeAreaView>
   );
 
+  if (session && checkingAccess) return (
+    <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
+      <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" />
+      <Text style={styles.sectionTitle}>Verificando acceso...</Text>
+      <Text style={styles.cardMeta}>{message}</Text>
+    </View></SafeAreaView>
+  );
+
   if (!session || !authorized) return (
     <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
       <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" /><Text style={styles.sectionTitle}>{role === 'worker' ? 'Acceso trabajador' : 'Acceso administrador'}</Text>
@@ -388,6 +400,7 @@ export default function HomeScreen() {
       <Field label="Correo" value={authEmail} onChangeText={setAuthEmail} />
       <Field label="Contraseña" value={authPassword} onChangeText={setAuthPassword} secureTextEntry />
       <Pressable style={styles.primaryButton} disabled={authBusy} onPress={() => void signIn()}><Text style={styles.primaryText}>Entrar y sincronizar</Text></Pressable>
+      {session && <Pressable style={styles.smallButton} onPress={() => void signOut()}><Text style={styles.smallButtonText}>Cerrar sesión</Text></Pressable>}
       <Pressable style={styles.smallButton} onPress={() => setRole(null)}><Text style={styles.smallButtonText}>Cambiar acceso</Text></Pressable>
       <Text style={styles.cardMeta}>{message}</Text>
     </View></SafeAreaView>
