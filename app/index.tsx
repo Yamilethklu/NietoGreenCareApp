@@ -6,7 +6,7 @@ import { shareInvoice, adminRequest } from '../services/admin';
 import { CustomerHistory } from '../components/CustomerHistory';
 import { texasDate, enableDailyReminder, disableDailyReminder, onAgendaNotification } from '../services/daily-agenda';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase, finishGoogleSignIn, signInWithGoogle } from '../services/auth';
+import { supabase, signInWithGoogle, saveRole, loadRole, clearRole } from '../services/auth';
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -41,12 +41,15 @@ export default function HomeScreen() {
   const dayRef = useRef(texasDate());
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const loadingRef = useRef(false);
-  useRealtimeTable('solicitudes', () => {
+  useRealtimeTable('leads', () => {
     refreshRef.current();
   });
 
   const [session, setSession] = useState<Session | null>(null);
-  const [role, setRole] = useState<Role>(null);
+  const [role, setRoleState] = useState<Role>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+  const setRole = (next: Role) => { setRoleState(next); if (next) void saveRole(next); else void clearRole(); };
+  useEffect(() => { let active = true; void loadRole().then(saved => { if (active) { if (saved) setRoleState(saved); setRoleLoaded(true); } }); return () => { active = false; }; }, []);
   const [authorized, setAuthorized] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
 
@@ -61,15 +64,6 @@ export default function HomeScreen() {
     setModalOrder(order);
     setModalVisible(true);
   };
-  useEffect(() => {
-    const handleDeepLink = async (event: { url: string }) => {
-      if (event.url.includes('auth/callback')) {
-        await finishGoogleSignIn(event.url);
-      }
-    };
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-    return () => subscription.remove();
-  }, []);
   const [message, setMessage] = useState(supabase ? 'Inicia sesion para vincular con el panel web' : 'Faltan variables de Supabase');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
@@ -90,34 +84,22 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
-    const handled = new Set<string>();
-    const handleUrl = async (url: string) => {
-      if (handled.has(url)) return;
-      handled.add(url);
-      try { await finishGoogleSignIn(url); }
-      catch { if (!cancelled) setMessage('No se pudo completar el acceso. Intenta de nuevo.'); }
-    };
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setAuthorized(false);
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT') setAuthorized(false);
       setSession(nextSession);
     });
-    const urlListener = Linking.addEventListener('url', ({ url }) => { void handleUrl(url); });
     void (async () => {
       try {
         const { data: current } = await supabase!.auth.getSession();
         if (cancelled) return;
         setSession(current.session);
-        // Con sesión activa no se reprocesa la URL de origen.
-        if (current.session) return;
-        const initialUrl = await Linking.getInitialURL();
-        if (initialUrl && !cancelled) await handleUrl(initialUrl);
       } catch { if (!cancelled) setMessage('No se pudo completar el acceso. Intenta de nuevo.'); }
     })();
     const listener = AppState.addEventListener('change', state => {
       if (state === 'active') supabase?.auth.startAutoRefresh(); else supabase?.auth.stopAutoRefresh();
     });
     supabase.auth.startAutoRefresh();
-    return () => { cancelled = true; data.subscription.unsubscribe(); urlListener.remove(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
+    return () => { cancelled = true; data.subscription.unsubscribe(); listener.remove(); supabase?.auth.stopAutoRefresh(); };
   }, []);
   useEffect(() => {
     let active = true;
@@ -132,7 +114,7 @@ export default function HomeScreen() {
       if (!active) return;
       const result = role === 'admin'
         ? await supabase!.rpc('is_admin')
-        : await supabase!.from('crew_members').select('id').eq('active', true).ilike('email', currentSession.user.email ?? '').limit(1);
+        : await supabase!.from('crew_members').select('id').eq('active', true).eq('email', (currentSession.user.email ?? '').trim().toLowerCase()).limit(1);
       if (!active) return;
       const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
       setAuthorized(allowed);
@@ -148,7 +130,7 @@ export default function HomeScreen() {
       if (active) setMessage(`No se pudo verificar el acceso de ${signedInEmail}. Revisa la conexión e inténtalo de nuevo.`);
     });
     return () => { active = false; };
-  }, [session, role]);
+  }, [session?.user.id, role]);
   useEffect(() => { if (session && authorized) void loadData(); }, [session, authorized]);
   useEffect(() => { if (session && authorized && role === 'worker') void loadData(); }, [selectedDate]);
   refreshRef.current = loadData;
@@ -196,73 +178,17 @@ export default function HomeScreen() {
     await refreshRef.current();
   };
 
-  // Función unificada: Actualizar precio (reemplaza antigua)
   const updateOrderPrice = async (orderId: string, newPrice: number) => {
-    try {
-      if (!supabase) throw new Error('Supabase no inicializado');
-      const { error } = await supabase
-        .from('work_orders')
-        .update({ price: newPrice } as any)
-        .eq('id', orderId);
-
-      if (error) throw error;
-      await fetchOrders();
-    } catch (err: any) {
-      console.error('Error al actualizar el precio:', err.message);
-    }
+    if (await updateOrder(orderId, { price: newPrice })) await loadData();
   };
 
-  // Función unificada: Eliminar casa/cliente (reemplaza antigua)
   const deleteHouse = async (houseId: string) => {
-    try {
-      setHouses((current) => current.filter((house) => house.id !== houseId));
-      setOrders((current) => current.filter((order) => order.houseId !== houseId));
-      
-      if (!supabase) throw new Error('Supabase no inicializado');
-      const { error } = await supabase
-        .from('customers')
-        .delete()
-        .eq('id', houseId);
-
-      if (error) throw error;
-      await fetchOrders();
-    } catch (err: any) {
-      console.error('Error al eliminar la casa:', err.message);
-    }
+    await deleteRow('leads', houseId);
+    await loadData();
   };
 
-  // Función unificada: Crear invoice (renombrada para evitar conflictos si fuera necesario, o sobrescrita)
-  const createInvoice = async (customerId: string) => {
-    try {
-      const pendingOrders = orders.filter(o => o.houseId === customerId && o.status === 'FINALIZADA' && !o.invoiceId);
-      const totalAmount = pendingOrders.reduce((sum, o) => sum + o.price, 0);
-      const orderIds = pendingOrders.map(o => o.id);
-
-      if (!supabase) throw new Error('Supabase no inicializado');
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('work_invoices')
-        .insert({
-          customer_id: customerId,
-          total_amount: totalAmount,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        } as any)
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      if (invoice) {
-        await supabase
-          .from('work_orders')
-          .update({ invoice_id: invoice.id, status: 'invoiced' } as any)
-          .in('id', orderIds);
-      }
-
-      await fetchOrders();
-    } catch (err: any) {
-      console.error('Error al generar el invoice:', err.message);
-    }
+  const createInvoice = async (_houseId: string) => {
+    setMessage('Las facturas se generan desde el panel web del sitio.');
   };
 
   function getHouse(id: string) { return houses.find((house) => house.id === id); }
@@ -281,7 +207,7 @@ export default function HomeScreen() {
     catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión con Google.'); }
     finally { setAuthBusy(false); }
   }
-  async function signOut() { await disableDailyReminder().catch(() => {}); if (supabase) await supabase.auth.signOut(); setAuthorized(false); setSession(null); setMessage('Sesion cerrada'); }
+  async function signOut() { await disableDailyReminder().catch(() => {}); if (supabase) await supabase.auth.signOut(); await clearRole(); setRoleState(null); setAuthorized(false); setSession(null); setMessage('Sesion cerrada'); }
 
   async function loadData() {
     if (!supabase || !session || !authorized) return;
@@ -418,6 +344,8 @@ export default function HomeScreen() {
     }, { onConflict: 'week_start' });
     if (!error) setWeeklySummaries((current) => [summary, ...current.filter((item) => item.weekStart !== start)]);
   }
+
+  if (!roleLoaded) return <SafeAreaView style={styles.screen} />;
 
   if (!role) return (
     <SafeAreaView style={styles.screen}><View style={styles.loginBox}>
