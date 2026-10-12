@@ -6,10 +6,14 @@ En Supabase → Authentication → URL Configuration → Redirect URLs, agregar 
 
 ```
 nietogreencare://admin
+nietogreencare://admin/
+nietogreencare:///admin
 nietogreencare://
+nietogreencare://auth/callback
+nietogreencare://auth/callback/
 ```
 
-La app usa `nietogreencare://admin` como `redirectTo` (ver `authRedirect` en `services/auth.ts`); agregar ambas por compatibilidad. En Google Cloud, el URI autorizado es `https://<proyecto>.supabase.co/auth/v1/callback`.
+La app usa `nietogreencare://admin` como `redirectTo` (ver `authRedirect` en `services/auth.ts`); las demás entradas son compatibilidad para Android/iOS cuando el sistema normaliza el deep link con `/` o ruta. En Google Cloud, el URI autorizado es `https://<proyecto>.supabase.co/auth/v1/callback`.
 
 Conservar Site URL, las direcciones del sitio web y las credenciales existentes.
 
@@ -23,7 +27,11 @@ La contraseña de Google no es necesariamente una contraseña de Supabase. Ante 
 
 ## Flujo y rol persistido
 
-El rol elegido (admin/trabajador) se guarda en SecureStore (localStorage en web) antes de abrir Google y se restaura al volver o reabrir la app; se borra al cerrar sesión o pulsar "Cambiar acceso". El código de OAuth se canjea una sola vez (`finishGoogleSignIn` deduplica por código) y el cliente Supabase es único (`services/auth.ts`).
+El rol elegido (admin/trabajador) se guarda en SecureStore (localStorage en web) antes de abrir Google y se restaura al volver o reabrir la app; se borra al cerrar sesión o pulsar "Cambiar acceso". El código de OAuth se canjea una sola vez (`finishGoogleSignIn` deduplica por código) y el cliente Supabase es único (`services/auth.ts`). La pantalla principal también escucha `Linking` para completar el callback cuando Android/iOS entregan el regreso fuera de `openAuthSessionAsync`.
+
+## Builds y actualizaciones
+
+Los cambios de JavaScript se envían por EAS Update al canal `production` con runtime `1.1.9`, que coincide con TestFlight `1.1.9 (14)`. Los workflows nativos de iPhone y APK quedan manuales para evitar crear versiones nuevas por cada ajuste de autenticación; solo se ejecutan cuando explícitamente se requiere una nueva compilación nativa.
 
 ## Lista de verificación manual
 
