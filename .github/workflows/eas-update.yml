@@ -1,6 +1,17 @@
 name: EAS Update OTA
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'services/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app.json'
+      - '.github/workflows/eas-update.yml'
   workflow_dispatch:
     inputs:
       channel:
@@ -30,7 +41,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: eas-update-${{ github.event.inputs.channel }}-${{ github.event.inputs.platform }}
+  group: eas-update-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -62,4 +73,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - name: Publish EAS Update
-        run: npx eas-cli update --channel "${{ github.event.inputs.channel }}" --platform "${{ github.event.inputs.platform }}" --message "${{ github.event.inputs.message }}" --non-interactive
+        shell: bash
+        run: |
+          CHANNEL="${{ github.event.inputs.channel }}"
+          PLATFORM="${{ github.event.inputs.platform }}"
+          MESSAGE="${{ github.event.inputs.message }}"
+          if [ -z "$CHANNEL" ]; then CHANNEL="production"; fi
+          if [ -z "$PLATFORM" ]; then PLATFORM="all"; fi
+          if [ -z "$MESSAGE" ]; then MESSAGE="Fix Google login role persistence"; fi
+          npx eas-cli update --channel "$CHANNEL" --platform "$PLATFORM" --message "$MESSAGE" --non-interactive
