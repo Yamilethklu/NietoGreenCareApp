@@ -77,9 +77,7 @@
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/ee66ff82-78c1-4a92-801d-28ed5ec36feb"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.1.4",
     "extra": {
       "router": {},
       "eas": {
