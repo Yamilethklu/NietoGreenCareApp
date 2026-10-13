@@ -1,4 +1,4 @@
-name: EAS Update OTA
+name: EAS Update OTA iOS
 
 on:
   push:
@@ -19,29 +19,20 @@ on:
         description: "EAS update channel, or comma separated channels"
         required: true
         default: "production,preview"
-      platform:
-        description: "Platform to update"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - all
-          - android
-          - ios
       runtime_versions:
         description: "Runtime versions to publish, comma separated"
         required: true
-        default: "1.1.10,1.1.9,1.1.4"
+        default: "1.1.9"
       message:
         description: "Update message"
         required: true
-        default: "Fix Google login role persistence"
+        default: "iOS panel fix"
 
 permissions:
   contents: read
 
 concurrency:
-  group: eas-update-${{ github.ref }}
+  group: eas-update-ios-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -71,17 +62,15 @@ jobs:
           token: ${{ env.EXPO_TOKEN }}
       - run: npm ci
       - run: npm run typecheck
-      - name: Publish EAS Updates for installed runtimes
+      - name: Publish iOS EAS Updates for installed runtime
         shell: bash
         run: |
           CHANNELS="${{ github.event.inputs.channel }}"
-          PLATFORM="${{ github.event.inputs.platform }}"
           MESSAGE="${{ github.event.inputs.message }}"
           RUNTIME_VERSIONS="${{ github.event.inputs.runtime_versions }}"
           if [ -z "$CHANNELS" ]; then CHANNELS="production,preview"; fi
-          if [ -z "$PLATFORM" ]; then PLATFORM="all"; fi
-          if [ -z "$MESSAGE" ]; then MESSAGE="Fix Google login role persistence"; fi
-          if [ -z "$RUNTIME_VERSIONS" ]; then RUNTIME_VERSIONS="1.1.10,1.1.9,1.1.4"; fi
+          if [ -z "$MESSAGE" ]; then MESSAGE="iOS panel fix"; fi
+          if [ -z "$RUNTIME_VERSIONS" ]; then RUNTIME_VERSIONS="1.1.9"; fi
 
           ORIGINAL_APP_JSON="$(cat app.json)"
           IFS=',' read -ra CHANNEL_LIST <<< "$CHANNELS"
@@ -93,8 +82,8 @@ jobs:
               RUNTIME="$(echo "$RUNTIME" | xargs)"
               if [ -z "$RUNTIME" ]; then continue; fi
               node -e "const fs=require('fs'); const app=JSON.parse(fs.readFileSync('app.json','utf8')); app.expo.runtimeVersion=process.argv[1]; fs.writeFileSync('app.json', JSON.stringify(app,null,2)+'\\n');" "$RUNTIME"
-              echo "Publishing OTA update to channel=$CHANNEL platform=$PLATFORM runtime=$RUNTIME"
-              npx eas-cli update --channel "$CHANNEL" --platform "$PLATFORM" --message "$MESSAGE (channel $CHANNEL runtime $RUNTIME)" --non-interactive
+              echo "Publishing iOS OTA update to channel=$CHANNEL runtime=$RUNTIME"
+              npx eas-cli update --channel "$CHANNEL" --platform ios --message "$MESSAGE (iOS channel $CHANNEL runtime $RUNTIME)" --non-interactive
             done
           done
           printf '%s' "$ORIGINAL_APP_JSON" > app.json
