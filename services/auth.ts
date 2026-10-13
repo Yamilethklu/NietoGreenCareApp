@@ -60,6 +60,10 @@ export function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: str
 }
 
 const exchanges = new Map<string, Promise<void>>();
+// Diagnóstico seguro: solo etiquetas y mensajes de error, nunca códigos, tokens ni correos.
+const diag = { callback: 'no', params: '', exchange: 'no', detail: '' };
+const resetDiag = () => { diag.callback = 'no'; diag.params = ''; diag.exchange = 'no'; diag.detail = ''; };
+const diagText = () => `[diagnóstico: enlace=${diag.callback}${diag.params ? ` (${diag.params})` : ''}, intercambio=${diag.exchange}${diag.detail ? `, ${diag.detail}` : ''}]`;
 
 function isNativeAuthCallback(parsed: URL) {
   if (parsed.protocol !== 'nietogreencare:') return false;
@@ -76,9 +80,13 @@ export async function finishGoogleSignIn(callback: string) {
   // Safe diagnostics only: never log the callback URL, OAuth code, tokens, or email.
   console.info('[OAuth] Native callback received.');
   const fragment = new URLSearchParams(parsed.hash.slice(1));
+  diag.callback = 'sí';
+  diag.params = [...new Set([...parsed.searchParams.keys(), ...fragment.keys()])].join('+') || 'sin parámetros';
   if (parsed.searchParams.has('error') || fragment.has('error')) {
     console.warn('[OAuth] Provider returned an authentication error.');
-    throw new Error('Google no autorizó el acceso o el enlace ya fue utilizado. Cierra el navegador y pulsa Continuar con Google para iniciar un acceso nuevo.');
+    const reason = (parsed.searchParams.get('error_description') || fragment.get('error_description') || parsed.searchParams.get('error') || fragment.get('error') || '').slice(0, 160);
+    diag.detail = `motivo=${reason}`;
+    throw new Error(`Google o Supabase rechazó el acceso${reason ? `: ${reason}` : ''}. ${diagText()}`);
   }
   const code = parsed.searchParams.get('code') || fragment.get('code');
   if (!code) {
@@ -95,8 +103,11 @@ export async function finishGoogleSignIn(callback: string) {
       );
       if (error && !(await supabase!.auth.getSession()).data.session) {
         console.warn('[OAuth] Code exchange failed.');
-        throw new Error('No se pudo completar el acceso con Google. Vuelve a intentarlo.');
+        diag.exchange = 'falló';
+        diag.detail = `${error.status ?? ''} ${error.message}`.trim().slice(0, 160);
+        throw new Error(`No se pudo completar el acceso con Google: ${diag.detail}. ${diagText()}`);
       }
+      diag.exchange = 'ok';
       console.info('[OAuth] Code exchange completed.');
     })());
   }
@@ -147,6 +158,7 @@ export function signInWithGoogle(): Promise<boolean> {
 
 async function performGoogleSignIn() {
   if (!supabase) throw new Error('La conexión de la app no está configurada.');
+  resetDiag();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: authRedirect, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
@@ -154,6 +166,7 @@ async function performGoogleSignIn() {
   if (error || !data.url) throw new Error('No se pudo abrir Google. Intenta de nuevo.');
   const result = await WebBrowser.openAuthSessionAsync(data.url, authRedirect);
   console.info('[OAuth] Browser flow finished:', result.type);
+  diag.detail = diag.detail || `navegador=${result.type}`;
   if (result.type === 'success') {
     await finishGoogleSignIn(result.url);
   } else if (result.type === 'dismiss' || result.type === 'locked') {
@@ -162,7 +175,7 @@ async function performGoogleSignIn() {
     const session = await waitForSession(10000);
     if (!session) {
       console.warn('[OAuth] No session observed after browser dismissal.');
-      throw new Error('Google regresó a la app, pero no se pudo confirmar la sesión. Intenta nuevamente; si persiste, comparte el diagnóstico OAuth sin códigos ni tokens.');
+      throw new Error(`Google regresó a la app, pero no se pudo confirmar la sesión. ${diagText()}`);
     }
   } else {
     return false;
@@ -172,7 +185,7 @@ async function performGoogleSignIn() {
   const { data: current } = await supabase.auth.getSession();
   if (!current.session) {
     console.warn('[OAuth] Browser returned but no Supabase session was available.');
-    throw new Error('Google no devolvió una sesión válida. Intenta de nuevo.');
+    throw new Error(`Google no devolvió una sesión válida. ${diagText()}`);
   }
   console.info('[OAuth] Session confirmed.');
   return true;
