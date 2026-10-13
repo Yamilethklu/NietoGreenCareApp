@@ -38,37 +38,6 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "android": {
-      "package": "com.nietogreencare.app",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#dcfce7"
-      },
-      "permissions": [
-        "android.permission.POST_NOTIFICATIONS"
-      ],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": false,
-          "data": [
-            {
-              "scheme": "nietogreencare",
-              "host": "admin"
-            },
-            {
-              "scheme": "nietogreencare",
-              "host": "auth",
-              "pathPrefix": "/callback"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
-      ]
-    },
     "web": {
       "bundler": "metro"
     },
