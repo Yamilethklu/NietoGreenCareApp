@@ -36,7 +36,8 @@
       "bundleIdentifier": "com.nietogreencare.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "runtimeVersion": "1.1.9"
     },
     "android": {
       "package": "com.nietogreencare.app",
@@ -67,7 +68,8 @@
             "DEFAULT"
           ]
         }
-      ]
+      ],
+      "runtimeVersion": "1.1.10"
     },
     "web": {
       "bundler": "metro"
