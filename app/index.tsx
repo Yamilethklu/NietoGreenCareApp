@@ -155,10 +155,19 @@ export default function HomeScreen() {
       const current = await withTimeout(supabase!.auth.getSession(), 15000, 'timeout');
       const currentSession = current.data.session ?? session;
       if (!active) return;
-      const query = role === 'admin'
-        ? supabase!.rpc('is_admin')
-        : supabase!.from('crew_members').select('id').eq('active', true).eq('email', (currentSession.user.email ?? '').trim().toLowerCase()).limit(1);
-      const result: any = await withTimeout(query, 15000, 'timeout');
+      const runCheck = () => {
+        const query = role === 'admin'
+          ? supabase!.rpc('is_admin')
+          : supabase!.from('crew_members').select('id').eq('active', true).eq('email', (currentSession.user.email ?? '').trim().toLowerCase()).limit(1);
+        return withTimeout(query, 15000, 'timeout') as Promise<any>;
+      };
+      let result: any;
+      // Un fallo de red o un timeout no debe sacar al usuario del panel: se reintenta antes de rendirse.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { result = await runCheck(); if (!result.error) break; } catch { result = { error: { message: 'timeout' } }; }
+        if (!active) return;
+        await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+      }
       if (!active) return;
       const allowed = !result.error && (role === 'admin' ? result.data === true : Array.isArray(result.data) && result.data.length > 0);
       setAuthorized(allowed);

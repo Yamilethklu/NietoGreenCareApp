@@ -8,10 +8,39 @@ const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
 export const authRedirect = 'nietogreencare://admin';
 
+// SecureStore limita cada valor (~2 KB en iOS/Android antiguos) y la sesión de Google lo supera,
+// lo que hacía perder la sesión y volver al login. Se guarda en fragmentos de 1800 caracteres.
+const CHUNK = 1800;
+const chunkCount = (name: string) => `${name}.n`;
+async function secureGet(name: string): Promise<string | null> {
+  const count = await SecureStore.getItemAsync(chunkCount(name));
+  if (!count) return SecureStore.getItemAsync(name);
+  const parts: string[] = [];
+  for (let i = 0; i < Number(count); i += 1) {
+    const part = await SecureStore.getItemAsync(`${name}.${i}`);
+    if (part === null) return null;
+    parts.push(part);
+  }
+  return parts.join('');
+}
+async function secureRemove(name: string) {
+  const count = Number(await SecureStore.getItemAsync(chunkCount(name)) ?? 0);
+  for (let i = 0; i < count; i += 1) await SecureStore.deleteItemAsync(`${name}.${i}`);
+  await SecureStore.deleteItemAsync(chunkCount(name));
+  await SecureStore.deleteItemAsync(name);
+}
+async function secureSet(name: string, value: string) {
+  await secureRemove(name);
+  if (value.length <= CHUNK) { await SecureStore.setItemAsync(name, value); return; }
+  const total = Math.ceil(value.length / CHUNK);
+  for (let i = 0; i < total; i += 1) await SecureStore.setItemAsync(`${name}.${i}`, value.slice(i * CHUNK, (i + 1) * CHUNK));
+  await SecureStore.setItemAsync(chunkCount(name), String(total));
+}
+
 const storage = Platform.OS === 'web' ? undefined : {
-  getItem: (name: string) => SecureStore.getItemAsync(name),
-  setItem: (name: string, value: string) => SecureStore.setItemAsync(name, value),
-  removeItem: (name: string) => SecureStore.deleteItemAsync(name),
+  getItem: secureGet,
+  setItem: secureSet,
+  removeItem: secureRemove,
 };
 
 export const supabase = url && key ? createClient(url, key, {
