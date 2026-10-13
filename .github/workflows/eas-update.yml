@@ -31,7 +31,7 @@ on:
       runtime_versions:
         description: "Runtime versions to publish, comma separated"
         required: true
-        default: "1.1.9,1.1.4"
+        default: "1.1.10,1.1.9,1.1.4"
       message:
         description: "Update message"
         required: true
@@ -81,7 +81,7 @@ jobs:
           if [ -z "$CHANNELS" ]; then CHANNELS="production,preview"; fi
           if [ -z "$PLATFORM" ]; then PLATFORM="all"; fi
           if [ -z "$MESSAGE" ]; then MESSAGE="Fix Google login role persistence"; fi
-          if [ -z "$RUNTIME_VERSIONS" ]; then RUNTIME_VERSIONS="1.1.9,1.1.4"; fi
+          if [ -z "$RUNTIME_VERSIONS" ]; then RUNTIME_VERSIONS="1.1.10,1.1.9,1.1.4"; fi
 
           ORIGINAL_APP_JSON="$(cat app.json)"
           IFS=',' read -ra CHANNEL_LIST <<< "$CHANNELS"
