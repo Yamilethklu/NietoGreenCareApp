@@ -155,10 +155,25 @@ export default function HomeScreen() {
       const current = await withTimeout(supabase!.auth.getSession(), 15000, 'timeout');
       const currentSession = current.data.session ?? session;
       if (!active) return;
+      const adminEmail = (currentSession.user.email ?? '').trim().toLowerCase();
+      const runAdminCheck = async () => {
+        const rpcResult = await withTimeout(supabase!.rpc('is_admin'), 15000, 'timeout') as any;
+        if (!rpcResult.error) return rpcResult;
+
+        // Fallback for databases where the admin RPC was not migrated yet.
+        // It keeps valid admins from being locked out while Supabase is normalized.
+        const tableResult = await withTimeout(
+          supabase!.from('admin_users').select('id').eq('is_active', true).eq('email', adminEmail).limit(1),
+          15000,
+          'timeout',
+        ) as any;
+        if (!tableResult.error) return { data: Array.isArray(tableResult.data) && tableResult.data.length > 0, error: null };
+
+        return rpcResult;
+      };
       const runCheck = () => {
-        const query = role === 'admin'
-          ? supabase!.rpc('is_admin')
-          : supabase!.from('crew_members').select('id').eq('active', true).eq('email', (currentSession.user.email ?? '').trim().toLowerCase()).limit(1);
+        if (role === 'admin') return runAdminCheck();
+        const query = supabase!.from('crew_members').select('id').eq('active', true).eq('email', adminEmail).limit(1);
         return withTimeout(query, 15000, 'timeout') as Promise<any>;
       };
       let result: any;
