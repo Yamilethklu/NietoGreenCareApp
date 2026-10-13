@@ -44,6 +44,12 @@ work_invoices
 site_sections
 ```
 
+## Solicitudes, agenda y avisos
+
+- Pantalla principal: Agenda del día. Menú: Solicitudes, Historial, Invoices y Trabajadores.
+- Nueva Solicitud (botón «Nueva»): si el nombre ya existe se agrega a su historial; si no, se crea la ficha.
+- Avisos de nuevas solicitudes: ver `docs/notificaciones-y-solicitudes.md`.
+
 ## Android
 
 - [Descargar APK para Android](https://github.com/Yamilethklu/NietoGreenCareApp/releases/download/app-v1.1.0/app-release.apk)
