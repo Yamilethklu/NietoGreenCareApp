@@ -11,13 +11,14 @@ LocaleConfig.locales.es = {
 };
 LocaleConfig.defaultLocale = 'es';
 
-export function DayCalendar({ visible, selected, onSelect, onClose }: { visible: boolean; selected: string; onSelect: (date: string) => void; onClose: () => void }) {
+export function DayCalendar({ visible, selected, onSelect, onClose, maxDate }: { visible: boolean; selected: string; onSelect: (date: string) => void; onClose: () => void; maxDate?: string }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 }}>
         <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12 }}>
           <Calendar
             current={selected}
+            maxDate={maxDate}
             markedDates={{ [selected]: { selected: true, selectedColor: '#16a34a' } }}
             onDayPress={(day) => { onSelect(day.dateString); onClose(); }}
           />
@@ -30,3 +31,4 @@ export function DayCalendar({ visible, selected, onSelect, onClose }: { visible:
     </Modal>
   );
 }
+

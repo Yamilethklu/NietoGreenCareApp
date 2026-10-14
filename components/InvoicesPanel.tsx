@@ -3,6 +3,7 @@ import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, Vie
 import { Ionicons } from '@expo/vector-icons';
 import { adminRequest, shareInvoice } from '../services/admin';
 import { texasDate } from '../services/daily-agenda';
+import { DateField } from './DateField';
 import { PAGE_SIZE, PAY_METHODS, dbPay, isDate, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
 
 type Filter = 'todos' | 'pagado' | 'no_pagado';
@@ -122,7 +123,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
                 <View style={{ marginTop: 18 }}>
                   <Text style={{ fontWeight: '800', color: '#b45309' }}>Registrar pago</Text>
                   <Text style={{ marginTop: 8, fontWeight: '700' }}>Fecha</Text>
-                  <TextInput style={input} value={payDate} onChangeText={setPayDate} placeholder="AAAA-MM-DD" autoCapitalize="none" />
+                  <DateField value={payDate} onChange={setPayDate} inputStyle={input} maxDate={texasDate()} />
                   <Text style={{ fontWeight: '700' }}>Forma de pago</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 8 }}>
                     {PAY_METHODS.map((item) => (
@@ -145,3 +146,4 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     </View>
   );
 }
+

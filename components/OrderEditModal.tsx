@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { STATUSES, isDate, type Order, type Status } from '../src/panel';
+import { DateField } from './DateField';
 
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
 const label = { fontWeight: '700', color: '#14532d' } as const;
@@ -41,7 +42,7 @@ export function OrderEditModal({ order, onClose, onSave }: { order: Order | null
           <Text style={{ fontSize: 20, fontWeight: '800', color: '#14532d' }}>Editar orden</Text>
           <Text style={{ color: '#475569', marginBottom: 12 }}>{order.service}</Text>
           <Text style={label}>Fecha</Text>
-          <TextInput style={input} value={date} onChangeText={setDate} placeholder="AAAA-MM-DD" autoCapitalize="none" />
+          <DateField value={date} onChange={setDate} inputStyle={input} />
           <Text style={label}>Precio</Text>
           <TextInput style={input} value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
           <Text style={label}>Estado</Text>
@@ -64,3 +65,4 @@ export function OrderEditModal({ order, onClose, onSave }: { order: Order | null
     </Modal>
   );
 }
+

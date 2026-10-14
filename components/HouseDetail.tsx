@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { adminRequest } from '../services/admin';
 import { texasDate } from '../services/daily-agenda';
 import { InvoicesPanel } from './InvoicesPanel';
+import { DateField } from './DateField';
 import { PAGE_SIZE, isDate, weekdayName, type House, type Invoice, type Order } from '../src/panel';
 
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
@@ -106,7 +107,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
           <Text style={{ marginTop: 8, fontWeight: '700' }}>Servicio</Text>
           <TextInput style={input} value={service} onChangeText={setService} placeholder="Ej. Limpieza de jardín" />
           <Text style={{ fontWeight: '700' }}>Fecha</Text>
-          <TextInput style={input} value={date} onChangeText={setDate} placeholder="AAAA-MM-DD" autoCapitalize="none" />
+          <DateField value={date} onChange={setDate} inputStyle={input} />
           <Text style={{ fontWeight: '700' }}>Precio</Text>
           <TextInput style={input} value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
           <Text style={{ fontWeight: '700' }}>Notas</Text>
@@ -167,3 +168,4 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
     </View>
   );
 }
+

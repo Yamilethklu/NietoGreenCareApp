@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { isDate } from '../src/panel';
 import { texasDate } from '../services/daily-agenda';
+import { DateField } from './DateField';
 
 export type NewRequest = { name: string; date: string; address: string; services: string; phone: string; email: string; note: string; price: number };
 
@@ -42,7 +43,7 @@ export function NewRequestModal({ visible, onClose, onSave }: { visible: boolean
         </View>
         <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <Text style={label}>Nombre del cliente</Text><TextInput style={input} value={name} onChangeText={setName} />
-          <Text style={label}>Fecha del servicio (AAAA-MM-DD)</Text><TextInput style={input} value={date} onChangeText={setDate} autoCapitalize="none" />
+          <Text style={label}>Fecha del servicio (AAAA-MM-DD)</Text><DateField value={date} onChange={setDate} inputStyle={input} />
           <Text style={label}>Dirección</Text><TextInput style={input} value={address} onChangeText={setAddress} />
           <Text style={label}>Servicios</Text><TextInput style={input} value={services} onChangeText={setServices} />
           <Text style={label}>Teléfono</Text><TextInput style={input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
@@ -59,3 +60,4 @@ export function NewRequestModal({ visible, onClose, onSave }: { visible: boolean
     </Modal>
   );
 }
+

@@ -4,6 +4,7 @@ import { PromptModal } from '../components/PromptModal';
 import { AdminManagement } from '../components/AdminManagement';
 import { adminRequest } from '../services/admin';
 import { DayCalendar } from '../components/DayCalendar';
+import { DateField } from '../components/DateField';
 import { HouseDetail } from '../components/HouseDetail';
 import { InvoicesPanel } from '../components/InvoicesPanel';
 import { OrderEditModal, type OrderChanges } from '../components/OrderEditModal';
@@ -19,7 +20,7 @@ import { supabase, signInWithGoogle, finishGoogleSignIn, saveRole, loadRole, cle
 import type { Session } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const SITE_URL = 'https://nietogreecare-site.vercel.app';
 const APP_LOGO = require('../assets/icon.png');
@@ -504,7 +505,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View>{role !== 'worker' && <MiniButton icon="add-circle-outline" label="Nueva" onPress={() => setNewRequestOpen(true)} />}<MiniButton icon="globe-outline" label="Sitio" onPress={() => void Linking.openURL(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{((role === 'worker' ? ['agenda'] : ['agenda', 'solicitudes', 'casas', 'invoices', 'trabajadores', 'dashboard', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={TAB_LABELS[item] ?? item} onPress={() => setTab(item)} />)}</ScrollView>
+      <TabMenu tabs={(role === 'worker' ? ['agenda'] : ['agenda', 'solicitudes', 'casas', 'invoices', 'trabajadores', 'dashboard', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]} active={tab} onSelect={setTab} />
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.smallButton} onPress={() => void enableNotifications()}><Text style={styles.smallButtonText}>Activar recordatorio diario</Text></Pressable>
         {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
@@ -604,6 +605,28 @@ function buildWeeklySummary(rows: any[], start: string, end: string): WeeklySumm
   return { weekStart: start, weekEnd: end, completed, cancelled, unpaid, paid, total, notes: `Ordenes revisadas: ${weekRows.length}. Pagadas: ${paid}. Sin liquidar: ${unpaid}.` };
 }
 
+function TabMenu({ tabs, active, onSelect }: { tabs: Tab[]; active: Tab; onSelect: (tab: Tab) => void }) {
+  const [open, setOpen] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+  const ITEM_HEIGHT = 46;
+  useEffect(() => { Animated.timing(anim, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: false }).start(); }, [open]);
+  return (
+    <View style={styles.menuWrap}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Abrir menú de módulos" style={styles.menuBar} onPress={() => setOpen((value) => !value)}>
+        <View style={styles.menuButton}><Ionicons name={open ? 'close' : 'menu'} size={22} color="#ffffff" /></View>
+        <Text style={styles.menuCurrent}>{TAB_LABELS[active] ?? active}</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#475569" />
+      </Pressable>
+      <Animated.View style={{ overflow: 'hidden', opacity: anim, height: anim.interpolate({ inputRange: [0, 1], outputRange: [0, tabs.length * ITEM_HEIGHT] }) }}>
+        {tabs.map((item) => (
+          <Pressable key={item} style={[styles.menuItem, { height: ITEM_HEIGHT }, active === item && styles.tabActive]} onPress={() => { onSelect(item); setOpen(false); }}>
+            <Text style={[styles.menuItemText, active === item && styles.tabTextActive]}>{TAB_LABELS[item] ?? item}</Text>
+          </Pressable>
+        ))}
+      </Animated.View>
+    </View>
+  );
+}
 function TabButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
   return <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>;
 }
@@ -627,10 +650,10 @@ function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: 
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
   useEffect(() => setDraft(house), [house]);
   if (!draft) return null;
-  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'firstDate', 'notes'] as const).map((key) => <Field key={key} label={key === 'firstDate' ? 'Fecha del primer servicio (AAAA-MM-DD)' : key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 8 dias','Cada 15 dias','Una vez',...(['Cada 7 dias','Cada 14 dias'].includes(draft.frequency)?[draft.frequency]:[])].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'firstDate', 'notes'] as const).map((key) => key === 'firstDate' ? <View key={key}><Text style={styles.label}>Fecha del primer servicio (AAAA-MM-DD)</Text><DateField value={String(draft.firstDate ?? '')} onChange={(value) => setDraft({ ...draft, firstDate: value })} inputStyle={styles.input} /></View> : <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 8 dias','Cada 15 dias','Una vez',...(['Cada 7 dias','Cada 14 dias'].includes(draft.frequency)?[draft.frequency]:[])].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
 function PaymentModal({ visible, date, onDate, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; date: string; onDate: (date: string) => void; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
-  return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Field label="Fecha (AAAA-MM-DD)" value={date} onChangeText={onDate} /><Text style={styles.label}>Forma de pago</Text><View style={styles.segment}>{PAY_METHODS.map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Cobrar</Text></Pressable></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><View><Text style={styles.label}>Fecha (AAAA-MM-DD)</Text><DateField value={date} onChange={onDate} inputStyle={styles.input} maxDate={texasDate()} /></View><Text style={styles.label}>Forma de pago</Text><View style={styles.segment}>{PAY_METHODS.map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Cobrar</Text></Pressable></View></View></Modal>;
 }
 function Field(props: { label: string; value: string; onChangeText: (value: string) => void; keyboardType?: 'default' | 'numeric'; multiline?: boolean; secureTextEntry?: boolean }) {
   return <View><Text style={styles.label}>{props.label}</Text><TextInput {...props} style={[styles.input, props.multiline && styles.textarea]} placeholder={props.label} /></View>;
@@ -649,6 +672,12 @@ const styles = StyleSheet.create({
   siteText: { color: '#052e16', fontWeight: '800' },
   tabs: { maxHeight: 60, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
   tabsContent: { paddingHorizontal: 8 },
+  menuWrap: { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  menuBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  menuButton: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center' },
+  menuCurrent: { flex: 1, color: '#052e16', fontWeight: '800', fontSize: 16 },
+  menuItem: { justifyContent: 'center', paddingHorizontal: 16, marginHorizontal: 8, borderRadius: 8 },
+  menuItemText: { color: '#334155', fontWeight: '700', fontSize: 15 },
   tab: { minWidth: 86, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8 },
   tabActive: { backgroundColor: '#dcfce7' },
   tabText: { color: '#475569', fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
@@ -694,3 +723,4 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#16a34a', borderRadius: 8, alignItems: 'center', paddingVertical: 13, marginTop: 8 },
   primaryText: { color: '#ffffff', fontWeight: '900' },
 });
+
