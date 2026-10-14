@@ -40,6 +40,7 @@ export default function HomeScreen() {
   const [authPassword, setAuthPassword] = useState('');
 
   const [tab, setTab] = useState<Tab>('agenda');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(texasDate);
   const dayRef = useRef(texasDate());
   const refreshRef = useRef<() => Promise<void>>(async () => {});
@@ -504,7 +505,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}><Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" /><View style={styles.grow}><Text style={styles.brand}>NIETO GREEN CARE</Text><Text style={styles.subtitle}>{role === 'worker' ? 'Panel trabajador' : message}</Text></View>{role !== 'worker' && <MiniButton icon="add-circle-outline" label="Nueva" onPress={() => setNewRequestOpen(true)} />}<MiniButton icon="globe-outline" label="Sitio" onPress={() => void Linking.openURL(SITE_URL)} /><MiniButton icon="log-out-outline" label="Salir" onPress={() => void signOut()} /></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>{((role === 'worker' ? ['agenda'] : ['agenda', 'solicitudes', 'casas', 'invoices', 'trabajadores', 'dashboard', 'precios', 'galeria', 'opiniones', 'qr', 'editor']) as Tab[]).map((item) => <TabButton key={item} active={tab === item} label={TAB_LABELS[item] ?? item} onPress={() => setTab(item)} />)}</ScrollView>
+      {role !== 'worker' ? <View style={styles.menuWrap}><Pressable style={styles.menuButton} onPress={() => setMenuOpen((open) => !open)}><Text style={styles.menuButtonText}>{TAB_LABELS[tab] ?? tab}</Text><Ionicons name={menuOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#052e16" /></Pressable>{menuOpen && <View style={styles.menuList}>{(['agenda', 'solicitudes', 'casas', 'invoices', 'trabajadores', 'dashboard', 'precios', 'galeria', 'opiniones', 'qr', 'editor'] as Tab[]).map((item) => <Pressable key={item} style={[styles.menuItem, tab === item && styles.menuItemActive]} onPress={() => { setTab(item); setMenuOpen(false); }}><Text style={styles.menuItemText}>{TAB_LABELS[item] ?? item}</Text></Pressable>)}</View>}</View> : null}
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.smallButton} onPress={() => void enableNotifications()}><Text style={styles.smallButtonText}>Activar recordatorio diario</Text></Pressable>
         {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
@@ -518,9 +519,10 @@ export default function HomeScreen() {
         </>}
         {tab === 'agenda' && <>
           <SectionTitle title="Agenda del día" action="Hoy" onPress={() => setSelectedDate(texasDate())} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8 }}>
+          <View style={styles.dateSelectorRow}>
             <Pressable onPress={() => setSelectedDate(shiftDate(selectedDate, -1))} style={{ padding: 8 }}><Ionicons name="chevron-back" size={22} color="#14532d" /></Pressable>
-            <Pressable onPress={() => openCalendar('agenda')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name="calendar-outline" size={20} color="#14532d" /><Text style={{ fontWeight: '800', fontSize: 16 }}>{selectedDate}</Text></Pressable>
+            <Text style={styles.dateSelectorText}>{selectedDate}</Text>
+            <Pressable accessibilityLabel="Abrir calendario de agenda" onPress={() => openCalendar('agenda')} style={styles.dateIconButton}><Ionicons name="calendar-outline" size={20} color="#14532d" /></Pressable>
             <Pressable onPress={() => setSelectedDate(shiftDate(selectedDate, 1))} style={{ padding: 8 }}><Ionicons name="chevron-forward" size={22} color="#14532d" /></Pressable>
           </View>
           {visibleOrders.map((order) => <AgendaCard key={order.id} order={order} house={getHouse(order.houseId)}
@@ -625,9 +627,10 @@ function StatusPill({ label, tone }: { label: string; tone: 'green' | 'gray' | '
 function HouseModal({ house, onClose, onSave }: { house: House | null; onClose: () => void; onSave: (house: House) => Promise<void> }) {
   const [draft, setDraft] = useState<House | null>(house);
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
+  const [houseCalendarOpen, setHouseCalendarOpen] = useState(false);
   useEffect(() => setDraft(house), [house]);
   if (!draft) return null;
-  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'firstDate', 'notes'] as const).map((key) => <Field key={key} label={key === 'firstDate' ? 'Fecha del primer servicio (AAAA-MM-DD)' : key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 8 dias','Cada 15 dias','Una vez',...(['Cada 7 dias','Cada 14 dias'].includes(draft.frequency)?[draft.frequency]:[])].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
+  return <Modal visible={!!house} animationType="slide"><SafeAreaView style={styles.modal}><SectionTitle title="Casa / cliente" action="Cerrar" onPress={onClose} /><ScrollView contentContainerStyle={styles.content}>{(['client', 'address', 'city', 'zipCode', 'phone', 'email', 'notes'] as const).map((key) => <Field key={key} label={key} value={String(draft[key] ?? '')} multiline={key === 'notes'} onChangeText={(value) => setDraft({ ...draft, [key]: value })} />)}<Text style={styles.label}>Fecha del primer servicio</Text><View style={styles.dateInputRow}><TextInput style={[styles.input, styles.dateInput]} value={String(draft.firstDate ?? '')} placeholder="AAAA-MM-DD" onChangeText={(value) => setDraft({ ...draft, firstDate: value })} /><Pressable accessibilityLabel="Abrir calendario de primer servicio" style={styles.dateIconButton} onPress={() => setHouseCalendarOpen(true)}><Ionicons name="calendar-outline" size={20} color="#14532d" /></Pressable></View><DayCalendar visible={houseCalendarOpen} selected={String(draft.firstDate || texasDate())} onSelect={(date) => setDraft({ ...draft, firstDate: date })} onClose={() => setHouseCalendarOpen(false)} /><Text style={styles.label}>Frecuencia</Text><View style={styles.segment}>{['Cada 8 dias','Cada 15 dias','Una vez',...(['Cada 7 dias','Cada 14 dias'].includes(draft.frequency)?[draft.frequency]:[])].map(value=><Pressable key={value} style={[styles.segmentButton,draft.frequency===value&&styles.segmentActive]} onPress={()=>setDraft({...draft,frequency:value})}><Text style={styles.segmentText}>{value}</Text></Pressable>)}</View><Field label="Precio" value={String(draft.price)} keyboardType="numeric" onChangeText={(price) => setDraft({ ...draft, price: Number(price) || 0 })} />{saveError!==''&&<Text accessibilityLiveRegion="polite">{saveError}</Text>}<Pressable disabled={saving} style={styles.primaryButton} onPress={async()=>{if(saving)return;setSaving(true);setSaveError('');try{await onSave(draft);}catch(error){setSaveError(error instanceof Error?error.message:'No se pudo guardar.');}finally{setSaving(false);}}}><Text style={styles.primaryText}>Guardar casa y generar orden</Text></Pressable></ScrollView></SafeAreaView></Modal>;
 }
 function PaymentModal({ visible, date, onDate, method, note, onMethod, onNote, onClose, onSave }: { visible: boolean; date: string; onDate: (date: string) => void; method: PayMethod; note: string; onMethod: (method: PayMethod) => void; onNote: (note: string) => void; onClose: () => void; onSave: () => void }) {
   return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.paymentBox}><SectionTitle title="Registrar pago" action="Cerrar" onPress={onClose} /><Field label="Fecha (AAAA-MM-DD)" value={date} onChangeText={onDate} /><Text style={styles.label}>Forma de pago</Text><View style={styles.segment}>{PAY_METHODS.map((item) => <Pressable key={item} style={[styles.segmentButton, method === item && styles.segmentActive]} onPress={() => onMethod(item)}><Text style={styles.segmentText}>{item}</Text></Pressable>)}</View><Field label="Nota opcional" value={note} onChangeText={onNote} multiline /><Pressable style={styles.primaryButton} onPress={onSave}><Text style={styles.primaryText}>Cobrar</Text></Pressable></View></View></Modal>;
@@ -653,6 +656,13 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: '#dcfce7' },
   tabText: { color: '#475569', fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   tabTextActive: { color: '#052e16' },
+  menuWrap: { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingHorizontal: 12, paddingVertical: 8 },
+  menuButton: { borderWidth: 1, borderColor: '#bbf7d0', backgroundColor: '#dcfce7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  menuButtonText: { color: '#052e16', fontWeight: '900', textTransform: 'capitalize' },
+  menuList: { marginTop: 8, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, overflow: 'hidden', backgroundColor: '#ffffff' },
+  menuItem: { paddingHorizontal: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  menuItemActive: { backgroundColor: '#dcfce7' },
+  menuItemText: { color: '#0f172a', fontWeight: '800', textTransform: 'capitalize' },
   content: { padding: 14, gap: 12, paddingBottom: 40 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
   sectionTitle: { color: '#0f172a', fontWeight: '900', fontSize: 22 },
@@ -663,6 +673,11 @@ const styles = StyleSheet.create({
   smallButton: { backgroundColor: '#22c55e', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   smallButtonText: { color: '#052e16', fontWeight: '900' },
   input: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, color: '#0f172a' },
+  dateSelectorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8, gap: 8 },
+  dateSelectorText: { flex: 1, textAlign: 'center', color: '#052e16', fontWeight: '900', fontSize: 16 },
+  dateIconButton: { width: 42, height: 40, borderRadius: 8, backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0', alignItems: 'center', justifyContent: 'center' },
+  dateInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateInput: { flex: 1 },
   textarea: { minHeight: 82, textAlignVertical: 'top' },
   label: { color: '#334155', fontWeight: '800', marginBottom: 5, marginTop: 4 },
   card: { backgroundColor: '#ffffff', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, gap: 9 },
