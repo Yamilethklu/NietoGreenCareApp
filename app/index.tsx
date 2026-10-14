@@ -10,7 +10,6 @@ import { InvoicesPanel } from '../components/InvoicesPanel';
 import { OrderEditModal, type OrderChanges } from '../components/OrderEditModal';
 import { WorkerSchedule } from '../components/WorkerSchedule';
 import { AgendaCard } from '../components/AgendaCard';
-import { RequestsPanel } from '../components/RequestsPanel';
 import { NewRequestModal, type NewRequest } from '../components/NewRequestModal';
 import { registerPushToken, unregisterPushToken } from '../services/push';
 import { PAGE_SIZE, PAY_METHODS, STATUSES, dbPay, isDate, normalizeName, payLabel, shiftDate, type House, type Invoice, type Order, type PayMethod, type Status, type Worker } from '../src/panel';
@@ -514,7 +513,7 @@ export default function HomeScreen() {
         {role === 'worker' && <Text style={styles.notes}>{message}</Text>}
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <>
-          {leads.filter(lead => lead.status === 'pending' || lead.status === 'scheduled').map(lead => <View key={lead.id} style={styles.card}><Text style={styles.cardTitle}>{lead.customer}</Text><Text style={styles.cardMeta}>{lead.address}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}><Pressable onPress={() => void updateLeadStatus(lead.id, 'cancelled')} style={{ flex: 1, padding: 12, backgroundColor: '#dc2626', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Rechazar</Text></Pressable><Pressable onPress={() => acceptLead(lead)} style={{ flex: 1, padding: 12, backgroundColor: '#16a34a', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Aceptar</Text></Pressable></View></View>)}
+          {leads.filter(lead => lead.status === 'pending').map(lead => <View key={lead.id} style={styles.card}><Text style={styles.cardTitle}>{lead.customer}</Text><Text style={styles.cardMeta}>{lead.address}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}><Pressable onPress={() => void updateLeadStatus(lead.id, 'cancelled')} style={{ flex: 1, padding: 12, backgroundColor: '#dc2626', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Rechazar</Text></Pressable><Pressable onPress={() => acceptLead(lead)} style={{ flex: 1, padding: 12, backgroundColor: '#16a34a', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Aceptar</Text></Pressable></View></View>)}
         </>}
         {tab === 'agenda' && <>
           <SectionTitle title="Agenda del día" action="Hoy" onPress={() => setSelectedDate(texasDate())} />
@@ -523,7 +522,7 @@ export default function HomeScreen() {
             <Pressable onPress={() => openCalendar('agenda')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name="calendar-outline" size={20} color="#14532d" /><Text style={{ fontWeight: '800', fontSize: 16 }}>{selectedDate}</Text></Pressable>
             <Pressable onPress={() => setSelectedDate(shiftDate(selectedDate, 1))} style={{ padding: 8 }}><Ionicons name="chevron-forward" size={22} color="#14532d" /></Pressable>
           </View>
-          {visibleOrders.map((order) => <AgendaCard key={order.id} order={order} house={getHouse(order.houseId)} workers={role === 'worker' ? [] : workers} onAssign={(workerId) => void assignOrder(order.id, workerId)}
+          {visibleOrders.map((order) => <AgendaCard key={order.id} order={order} house={getHouse(order.houseId)} workers={role === 'worker' ? [] : workers} canAssign={role !== 'worker'} onAssign={(workerId) => void assignOrder(order.id, workerId)}
             onStatus={(id, status) => void updateStatus(id, status)} onPay={(id) => { setPaymentDate(texasDate()); setPaymentTarget({ type: 'order', id }); }}
             onPending={(id) => void markPending(id)} onPrice={handlePriceUpdate} onHistory={() => { if (role === 'worker') { const h = getHouse(order.houseId); const lines = orders.filter((o) => o.houseId === order.houseId).map((o) => `${o.date} · $${o.price.toFixed(2)} · ${o.paid ? 'Pagado' : 'Pendiente'}`).join('\n'); Alert.alert(h?.client ?? 'Cliente', `${h?.address ?? ''}\n\n${lines}`); return; } setDetailHouseId(order.houseId); setTab('casas'); }} />)}
           {!visibleOrders.length && <EmptyState text="No hay casas agendadas para este día." />}
@@ -557,7 +556,7 @@ export default function HomeScreen() {
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <DayCalendar visible={calendarOpen} selected={calendarFor === 'filter' ? (requestsFilter ?? selectedDate) : selectedDate} onSelect={(date) => (calendarFor === 'filter' ? setRequestsFilter(date) : setSelectedDate(date))} onClose={() => setCalendarOpen(false)} />
-      <NewRequestModal visible={newRequestOpen} onClose={() => { setNewRequestOpen(false); setAcceptingLead(null); }} onSave={createRequest} />
+      <NewRequestModal visible={newRequestOpen} initialValue={acceptingLead ? (() => { const lead = leads.find(item => item.id === acceptingLead); return lead ? { name: lead.customer, address: lead.address, phone: lead.phone, email: lead.email, services: lead.services || 'Corte de yarda', note: lead.details || '', price: lead.finalPrice || 0 } : undefined; })() : undefined} onClose={() => { setNewRequestOpen(false); setAcceptingLead(null); }} onSave={createRequest} />
       <OrderEditModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={saveOrderEdit} />
       <PaymentModal visible={!!paymentTarget} date={paymentDate} onDate={setPaymentDate} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
       <PromptModal
