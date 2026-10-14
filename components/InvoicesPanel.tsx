@@ -6,6 +6,7 @@ import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
 import { PAGE_SIZE, PAY_METHODS, dbPay, isDate, normalizeName, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
 
+// iOS OTA publication: invoice grouping and owner notes update.
 type Filter = 'todos' | 'pagado' | 'no_pagado';
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
 const cardStyle = { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#bbf7d0', padding: 12, marginTop: 10 } as const;
