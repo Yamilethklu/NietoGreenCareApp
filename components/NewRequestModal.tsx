@@ -10,13 +10,13 @@ const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff',
 const label = { fontWeight: '700', color: '#14532d' } as const;
 
 /** Registro manual de una solicitud (cliente que llama o escribe directamente al dueño). */
-export function NewRequestModal({ visible, onClose, onSave }: { visible: boolean; onClose: () => void; onSave: (value: NewRequest) => Promise<void> }) {
+export function NewRequestModal({ visible, onClose, onSave, initialValue }: { visible: boolean; onClose: () => void; onSave: (value: NewRequest) => Promise<void>; initialValue?: Partial<NewRequest> }) {
   const [name, setName] = useState(''); const [date, setDate] = useState(texasDate()); const [address, setAddress] = useState('');
   const [services, setServices] = useState('Corte de yarda'); const [phone, setPhone] = useState(''); const [email, setEmail] = useState('');
   const [note, setNote] = useState(''); const [price, setPrice] = useState('');
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
 
-  useEffect(() => { if (visible) { setName(''); setDate(texasDate()); setAddress(''); setServices('Corte de yarda'); setPhone(''); setEmail(''); setNote(''); setPrice(''); setError(''); } }, [visible]);
+  useEffect(() => { if (visible) { setName(initialValue?.name ?? ''); setDate(initialValue?.date ?? texasDate()); setAddress(initialValue?.address ?? ''); setServices(initialValue?.services || 'Corte de yarda'); setPhone(initialValue?.phone ?? ''); setEmail(initialValue?.email ?? ''); setNote(initialValue?.note ?? ''); setPrice(initialValue?.price != null ? String(initialValue.price) : ''); setError(''); } }, [visible]);
 
   async function save() {
     if (saving) return;
