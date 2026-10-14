@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { isDate } from '../src/panel';
 import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
@@ -41,7 +41,8 @@ export function NewRequestModal({ visible, onClose, onSave, initialValue }: { vi
           <Text style={{ fontSize: 22, fontWeight: '900', color: '#0f172a' }}>Nueva Solicitud</Text>
           <Pressable onPress={onClose}><Text style={{ color: '#475569', fontWeight: '800' }}>Cerrar</Text></Pressable>
         </View>
-        <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>
           <Text style={label}>Nombre del cliente</Text><TextInput style={input} value={name} onChangeText={setName} />
           <Text style={label}>Fecha del servicio (AAAA-MM-DD)</Text><DateField value={date} onChange={setDate} inputStyle={input} />
           <Text style={label}>Dirección</Text><TextInput style={input} value={address} onChangeText={setAddress} />
@@ -49,13 +50,14 @@ export function NewRequestModal({ visible, onClose, onSave, initialValue }: { vi
           <Text style={label}>Teléfono</Text><TextInput style={input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Text style={label}>Correo electrónico (opcional)</Text><TextInput style={input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
           <Text style={label}>Precio</Text><TextInput style={input} value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
-          <Text style={label}>Nota privada del dueño</Text><TextInput style={[input, { minHeight: 80, textAlignVertical: 'top' }]} value={note} onChangeText={setNote} multiline />
+          <Text style={label}>Nota privada del dueño</Text><TextInput style={[input, { minHeight: 80, textAlignVertical: 'top' }]} value={note} onChangeText={setNote} multiline scrollEnabled={false} />
           <Text style={{ color: '#64748b', marginBottom: 10 }}>Si el nombre ya existe, la solicitud se agrega a su historial; si no, se crea su ficha automáticamente.</Text>
           {error ? <Text accessibilityRole="alert" style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text> : null}
           <Pressable disabled={saving} onPress={() => void save()} style={{ backgroundColor: '#15803d', padding: 14, borderRadius: 8, opacity: saving ? 0.6 : 1 }}>
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>{saving ? 'Guardando...' : 'Guardar solicitud'}</Text>
           </Pressable>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
