@@ -386,7 +386,8 @@ export default function HomeScreen() {
     if (await updateOrder(id, { paid_amount: 0, payment_method: null, paid_at: null })) { await loadData(); setMessage('Cobro marcado como pendiente.'); }
   }
   async function saveOrderNotes(order: Order, notes: string) {
-    if (await updateOrder(order.id, { notes: notes || null })) { await loadData(); setMessage('Nota guardada; ya aparece en la Agenda del Día.'); }
+    if (!(await updateOrder(order.id, { notes: notes || null }))) throw new Error('No se pudo guardar la nota.');
+    await loadData(); setMessage('Nota guardada; ya aparece en la Agenda del Día.');
   }
   async function createRequest(value: NewRequest) {
     const key = normalizeName(value.name);
@@ -522,7 +523,7 @@ export default function HomeScreen() {
             <Pressable onPress={() => openCalendar('agenda')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name="calendar-outline" size={20} color="#14532d" /><Text style={{ fontWeight: '800', fontSize: 16 }}>{selectedDate}</Text></Pressable>
             <Pressable onPress={() => setSelectedDate(shiftDate(selectedDate, 1))} style={{ padding: 8 }}><Ionicons name="chevron-forward" size={22} color="#14532d" /></Pressable>
           </View>
-          {visibleOrders.map((order) => <AgendaCard key={order.id} order={order} house={getHouse(order.houseId)} workers={role === 'worker' ? [] : workers} canAssign={role !== 'worker'} onAssign={(workerId) => void assignOrder(order.id, workerId)}
+          {visibleOrders.map((order) => <AgendaCard key={order.id} order={order} house={getHouse(order.houseId)} workers={role === 'worker' ? [] : workers} canAssign={role !== 'worker'} canEditNotes={role !== 'worker'} onSaveNotes={(notes) => saveOrderNotes(order, notes)} onAssign={(workerId) => void assignOrder(order.id, workerId)}
             onStatus={(id, status) => void updateStatus(id, status)} onPay={(id) => { setPaymentDate(texasDate()); setPaymentTarget({ type: 'order', id }); }}
             onPending={(id) => void markPending(id)} onPrice={handlePriceUpdate} onHistory={() => { if (role === 'worker') { const h = getHouse(order.houseId); const lines = orders.filter((o) => o.houseId === order.houseId).map((o) => `${o.date} · $${o.price.toFixed(2)} · ${o.paid ? 'Pagado' : 'Pendiente'}`).join('\n'); Alert.alert(h?.client ?? 'Cliente', `${h?.address ?? ''}\n\n${lines}`); return; } setDetailHouseId(order.houseId); setTab('casas'); }} />)}
           {!visibleOrders.length && <EmptyState text="No hay casas agendadas para este día." />}
