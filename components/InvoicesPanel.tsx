@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { adminRequest, shareInvoice } from '../services/admin';
 import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
-import { PAGE_SIZE, PAY_METHODS, dbPay, isDate, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
+import { PAGE_SIZE, PAY_METHODS, dbPay, isDate, normalizeName, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
 
 type Filter = 'todos' | 'pagado' | 'no_pagado';
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
@@ -17,6 +17,11 @@ function RoundButton({ color, icon, onPress }: { color: string; icon: keyof type
 export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas' }: {
   invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string;
 }) {
+  const [search, setSearch] = useState('');
+  const [selectedHouse, setSelectedHouse] = useState<string | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<Filter>('todos');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -35,6 +40,23 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
   const shown = filtered.slice(start, start + PAGE_SIZE);
   const open = invoices.find((item) => item.id === openId) ?? null;
   const houseOf = (invoice: Invoice) => houses.find((house) => house.id === invoice.houseId);
+
+  const matchingHouses = useMemo(() => houses.filter(house => normalizeName(house.client).includes(normalizeName(search)) && search.trim().length > 0), [houses, search]);
+  const history = useMemo(() => orders.filter(order => order.houseId === selectedHouse).sort((a,b) => b.date.localeCompare(a.date)), [orders, selectedHouse]);
+  const chosen = history.filter(order => selectedOrders.includes(order.id));
+  const computedTotal = chosen.reduce((sum, order) => sum + (Number(prices[order.id] ?? order.price) || 0), 0);
+  async function createGroup() {
+    if (creating || !chosen.length) return;
+    if (chosen.some(order => order.status !== 'FINALIZADA' || !!order.invoiceId || !Number.isFinite(Number(prices[order.id] ?? order.price)) || Number(prices[order.id] ?? order.price) < order.paidAmount || Number(prices[order.id] ?? order.price) <= 0)) {
+      setMessage('Seleccione únicamente órdenes finalizadas, sin factura y con precios válidos que cubran los pagos registrados.'); return;
+    }
+    setCreating(true);
+    try {
+      await adminRequest('operations/invoices', 'POST', { action: 'create_group', items: chosen.map(order => ({ orderId: order.id, price: Number(prices[order.id] ?? order.price) })) });
+      setSelectedOrders([]); setPrices({}); await reload(); setMessage('Invoice generado con las órdenes seleccionadas.');
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'No se pudo crear el invoice.'); }
+    finally { setCreating(false); }
+  }
 
   function remove(invoice: Invoice) {
     const sent = Boolean(invoice.sentAt);
@@ -67,6 +89,24 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
   return (
     <View>
       <Text style={{ fontSize: 22, fontWeight: '800', color: '#14532d' }}>{title}</Text>
+      <View style={cardStyle}>
+        <Text style={{ fontWeight: '800', color: '#14532d', fontSize: 16 }}>Crear invoice por cliente</Text>
+        <TextInput value={search} onChangeText={value => { setSearch(value); setSelectedHouse(null); setSelectedOrders([]); setPrices({}); }} placeholder="Buscar por nombre del cliente" style={input} />
+        {matchingHouses.map(house => <Pressable key={house.id} onPress={() => { setSelectedHouse(house.id); setSelectedOrders([]); setPrices({}); }} style={{ padding: 10, backgroundColor: selectedHouse === house.id ? '#bbf7d0' : '#f1f5f9', marginBottom: 5, borderRadius: 7 }}><Text style={{ fontWeight: '700' }}>{house.client}</Text><Text>{house.address}</Text></Pressable>)}
+        {selectedHouse && <>
+          <Text style={{ fontWeight: '800', marginTop: 8 }}>Historial de órdenes de trabajo</Text>
+          {history.map(order => <View key={order.id} style={{ borderBottomWidth: 1, borderColor: '#e2e8f0', paddingVertical: 9 }}>
+            <Pressable onPress={() => { if (order.invoiceId || order.status !== 'FINALIZADA') return; setSelectedOrders(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id]); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name={selectedOrders.includes(order.id) ? 'checkbox' : 'square-outline'} size={23} color={order.invoiceId || order.status !== 'FINALIZADA' ? '#94a3b8' : '#15803d'} />
+              <View style={{ flex: 1 }}><Text>{order.date} · {order.service}</Text><Text style={{ color: '#64748b', fontSize: 12 }}>{order.invoiceId ? 'Ya facturada' : order.status !== 'FINALIZADA' ? 'No finalizada' : 'Disponible'} · ${order.price.toFixed(2)}</Text></View>
+            </Pressable>
+            {selectedOrders.includes(order.id) && <TextInput value={prices[order.id] ?? String(order.price)} onChangeText={value => setPrices(previous => ({ ...previous, [order.id]: value }))} keyboardType="decimal-pad" style={[input, { marginLeft: 30, marginBottom: 0 }]} placeholder="Precio editable" />}
+          </View>)}
+          {!history.length && <Text>No hay órdenes para este cliente.</Text>}
+          <Text style={{ fontWeight: '900', fontSize: 18, marginVertical: 12 }}>Total automático: ${computedTotal.toFixed(2)}</Text>
+          <Pressable disabled={!chosen.length || creating} onPress={() => void createGroup()} style={{ backgroundColor: '#15803d', padding: 13, borderRadius: 8, opacity: !chosen.length || creating ? 0.5 : 1 }}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>{creating ? 'Generando...' : 'Generar invoice de las seleccionadas'}</Text></Pressable>
+        </>}
+      </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
         {([['todos', 'Todos'], ['pagado', 'Pagado'], ['no_pagado', 'No pagado']] as [Filter, string][]).map(([key, text]) => (
           <Pressable key={key} onPress={() => { setFilter(key); setPage(0); }} style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#86efac', backgroundColor: filter === key ? '#bbf7d0' : '#fff' }}>
@@ -84,7 +124,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
             <Text style={{ marginTop: 6, fontSize: 16, fontWeight: '700' }}>${invoice.total.toFixed(2)} · <Text style={{ color: invoice.paid ? '#15803d' : '#b91c1c' }}>{invoice.paid ? 'Pagado' : 'No pagado'}</Text></Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <RoundButton color="#38bdf8" icon="eye-outline" onPress={() => { setOpenId(invoice.id); setError(''); setPayDate(texasDate()); }} />
-              <RoundButton color="#eab308" icon="document-text-outline" onPress={() => void shareInvoice(invoice.id).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No se pudo abrir el PDF.'))} />
+              <RoundButton color="#eab308" icon="download-outline" onPress={() => void shareInvoice(invoice.id).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No se pudo abrir el PDF.'))} />
               <RoundButton color="#ef4444" icon="trash-outline" onPress={() => remove(invoice)} />
             </View>
           </View>
@@ -119,6 +159,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
               })}
               <Text style={{ marginTop: 10, fontSize: 18, fontWeight: '800' }}>Total ${open.total.toFixed(2)} · {open.paid ? 'Pagado' : 'No pagado'}</Text>
 
+              <Pressable onPress={() => void shareInvoice(open.id).catch(cause => setError(cause instanceof Error ? cause.message : 'No se pudo descargar el PDF.'))} style={{ backgroundColor: '#2563eb', padding: 13, borderRadius: 8, marginTop: 12 }}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>Descargar PDF</Text></Pressable>
               {open.paid ? null : (
                 <View style={{ marginTop: 18 }}>
                   <Text style={{ fontWeight: '800', color: '#b45309' }}>Registrar pago</Text>
