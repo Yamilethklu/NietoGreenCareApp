@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
-import { isDate } from '../src/panel';
+import { isDate, type RequestCadence } from '../src/panel';
 import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
 
-export type NewRequest = { name: string; date: string; address: string; services: string; phone: string; email: string; note: string; price: number };
+export type NewRequest = { name: string; date: string; address: string; services: string; phone: string; email: string; note: string; price: number; cadence: RequestCadence };
 
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
 const label = { fontWeight: '700', color: '#14532d' } as const;
@@ -13,10 +13,11 @@ const label = { fontWeight: '700', color: '#14532d' } as const;
 export function NewRequestModal({ visible, onClose, onSave, initialValue }: { visible: boolean; onClose: () => void; onSave: (value: NewRequest) => Promise<void>; initialValue?: Partial<NewRequest> }) {
   const [name, setName] = useState(''); const [date, setDate] = useState(texasDate()); const [address, setAddress] = useState('');
   const [services, setServices] = useState('Corte de yarda'); const [phone, setPhone] = useState(''); const [email, setEmail] = useState('');
+  const [cadence, setCadence] = useState<RequestCadence>('one_time');
   const [note, setNote] = useState(''); const [price, setPrice] = useState('');
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
 
-  useEffect(() => { if (visible) { setName(initialValue?.name ?? ''); setDate(initialValue?.date ?? texasDate()); setAddress(initialValue?.address ?? ''); setServices(initialValue?.services || 'Corte de yarda'); setPhone(initialValue?.phone ?? ''); setEmail(initialValue?.email ?? ''); setNote(initialValue?.note ?? ''); setPrice(initialValue?.price != null ? String(initialValue.price) : ''); setError(''); } }, [visible]);
+  useEffect(() => { if (visible) { setName(initialValue?.name ?? ''); setDate(initialValue?.date ?? texasDate()); setAddress(initialValue?.address ?? ''); setServices(initialValue?.services || 'Corte de yarda'); setPhone(initialValue?.phone ?? ''); setEmail(initialValue?.email ?? ''); setNote(initialValue?.note ?? ''); setCadence(initialValue?.cadence ?? 'one_time'); setPrice(initialValue?.price != null ? String(initialValue.price) : ''); setError(''); } }, [visible]);
 
   async function save() {
     if (saving) return;
@@ -29,7 +30,7 @@ export function NewRequestModal({ visible, onClose, onSave, initialValue }: { vi
     if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return setError('El correo no es válido.');
     if (!Number.isFinite(amount) || amount < 0) return setError('Escribe un precio válido.');
     setSaving(true); setError('');
-    try { await onSave({ name: name.trim(), date, address: address.trim(), services: services.trim(), phone: phone.trim(), email: email.trim(), note: note.trim(), price: amount }); }
+    try { await onSave({ name: name.trim(), date, address: address.trim(), services: services.trim(), phone: phone.trim(), email: email.trim(), note: note.trim(), price: amount, cadence }); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo guardar.'); }
     finally { setSaving(false); }
   }
@@ -50,6 +51,8 @@ export function NewRequestModal({ visible, onClose, onSave, initialValue }: { vi
           <Text style={label}>Teléfono</Text><TextInput style={input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Text style={label}>Correo electrónico (opcional)</Text><TextInput style={input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
           <Text style={label}>Precio</Text><TextInput style={input} value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
+          <Text style={label}>Frecuencia</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>{([['one_time', 'Una vez'], ['weekly', 'Cada 7 días'], ['bi_weekly', 'Cada 14 días']] as const).map(([value, title]) => <Pressable key={value} onPress={() => setCadence(value)} style={{ padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#86efac', backgroundColor: cadence === value ? '#bbf7d0' : '#fff' }}><Text>{title}</Text></Pressable>)}</View>
           <Text style={label}>Nota privada del dueño</Text><TextInput style={[input, { minHeight: 80, textAlignVertical: 'top' }]} value={note} onChangeText={setNote} multiline scrollEnabled={false} />
           <Text style={{ color: '#64748b', marginBottom: 10 }}>Si el nombre ya existe, la solicitud se agrega a su historial; si no, se crea su ficha automáticamente.</Text>
           {error ? <Text accessibilityRole="alert" style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text> : null}
@@ -62,4 +65,5 @@ export function NewRequestModal({ visible, onClose, onSave, initialValue }: { vi
     </Modal>
   );
 }
+
 

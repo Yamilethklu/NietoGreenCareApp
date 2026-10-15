@@ -5,7 +5,7 @@ import { adminRequest } from '../services/admin';
 import { texasDate } from '../services/daily-agenda';
 import { InvoicesPanel } from './InvoicesPanel';
 import { DateField } from './DateField';
-import { PAGE_SIZE, isDate, weekdayName, type House, type Invoice, type Order } from '../src/panel';
+import { compareHistoryDates, PAGE_SIZE, isDate, weekdayName, type House, type Invoice, type Order } from '../src/panel';
 
 const input = { borderWidth: 1, borderColor: '#86efac', backgroundColor: '#fff', color: '#111827', borderRadius: 8, padding: 12, marginTop: 4, marginBottom: 10 } as const;
 const box = { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#bbf7d0', padding: 12, marginTop: 10 } as const;
@@ -34,7 +34,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const mine = useMemo(() => orders.filter((order) => order.houseId === house.id).sort((a, b) => b.date.localeCompare(a.date)), [orders, house.id]);
+  const mine = useMemo(() => orders.filter((order) => order.houseId === house.id).sort((a, b) => compareHistoryDates(a.date, b.date, texasDate())), [orders, house.id]);
   const pages = Math.max(1, Math.ceil(mine.length / PAGE_SIZE));
   useEffect(() => { if (page > pages - 1) setPage(0); }, [pages, page]);
   const start = page * PAGE_SIZE;
@@ -168,4 +168,5 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
     </View>
   );
 }
+
 

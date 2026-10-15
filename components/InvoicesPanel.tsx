@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { adminRequest, shareInvoice } from '../services/admin';
 import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
-import { PAGE_SIZE, PAY_METHODS, dbPay, isDate, normalizeName, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
+import { invoiceDate, compareHistoryDates, PAGE_SIZE, PAY_METHODS, dbPay, isDate, normalizeName, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
 
 // iOS OTA publication: invoice grouping and owner notes update.
 type Filter = 'todos' | 'pagado' | 'no_pagado';
@@ -15,8 +15,8 @@ function RoundButton({ color, icon, onPress }: { color: string; icon: keyof type
   return <Pressable onPress={onPress} style={{ backgroundColor: color, width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18} color="#fff" /></Pressable>;
 }
 
-export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas' }: {
-  invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string;
+export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas', onHistory }: {
+  invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string; onHistory?: (houseId: string) => void;
 }) {
   const [search, setSearch] = useState('');
   const [selectedHouse, setSelectedHouse] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
   const houseOf = (invoice: Invoice) => houses.find((house) => house.id === invoice.houseId);
 
   const matchingHouses = useMemo(() => houses.filter(house => normalizeName(house.client).includes(normalizeName(search)) && search.trim().length > 0), [houses, search]);
-  const history = useMemo(() => orders.filter(order => order.houseId === selectedHouse).sort((a,b) => b.date.localeCompare(a.date)), [orders, selectedHouse]);
+  const history = useMemo(() => orders.filter(order => order.houseId === selectedHouse).sort((a,b) => compareHistoryDates(a.date, b.date, texasDate())), [orders, selectedHouse]);
   const chosen = history.filter(order => selectedOrders.includes(order.id));
   const computedTotal = chosen.reduce((sum, order) => sum + (Number(prices[order.id] ?? order.price) || 0), 0);
   async function createGroup() {
@@ -94,12 +94,13 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
         <Text style={{ fontWeight: '800', color: '#14532d', fontSize: 16 }}>Crear invoice por cliente</Text>
         <TextInput value={search} onChangeText={value => { setSearch(value); setSelectedHouse(null); setSelectedOrders([]); setPrices({}); }} placeholder="Buscar por nombre del cliente" style={input} />
         {matchingHouses.map(house => <Pressable key={house.id} onPress={() => { setSelectedHouse(house.id); setSelectedOrders([]); setPrices({}); }} style={{ padding: 10, backgroundColor: selectedHouse === house.id ? '#bbf7d0' : '#f1f5f9', marginBottom: 5, borderRadius: 7 }}><Text style={{ fontWeight: '700' }}>{house.client}</Text><Text>{house.address}</Text></Pressable>)}
+        {selectedHouse && onHistory && <Pressable onPress={() => onHistory(selectedHouse)} style={{ paddingVertical: 10 }}><Text style={{ color: '#2563eb', fontWeight: '800' }}>Abrir historial / Generar Invoice</Text></Pressable>}
         {selectedHouse && <>
           <Text style={{ fontWeight: '800', marginTop: 8 }}>Historial de órdenes de trabajo</Text>
           {history.map(order => <View key={order.id} style={{ borderBottomWidth: 1, borderColor: '#e2e8f0', paddingVertical: 9 }}>
             <Pressable onPress={() => { if (order.invoiceId || order.status !== 'FINALIZADA') return; setSelectedOrders(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id]); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name={selectedOrders.includes(order.id) ? 'checkbox' : 'square-outline'} size={23} color={order.invoiceId || order.status !== 'FINALIZADA' ? '#94a3b8' : '#15803d'} />
-              <View style={{ flex: 1 }}><Text>{order.date} · {order.service}</Text><Text style={{ color: '#64748b', fontSize: 12 }}>{order.invoiceId ? 'Ya facturada' : order.status !== 'FINALIZADA' ? 'No finalizada' : 'Disponible'} · ${order.price.toFixed(2)}</Text></View>
+              <View style={{ flex: 1 }}><Text>{invoiceDate(order.date)} · {order.service}</Text><Text style={{ color: '#64748b', fontSize: 12 }}>{order.invoiceId ? 'Ya facturada' : order.status !== 'FINALIZADA' ? 'No finalizada' : 'Disponible'} · ${order.price.toFixed(2)}</Text></View>
             </Pressable>
             {selectedOrders.includes(order.id) && <TextInput value={prices[order.id] ?? String(order.price)} onChangeText={value => setPrices(previous => ({ ...previous, [order.id]: value }))} keyboardType="decimal-pad" style={[input, { marginLeft: 30, marginBottom: 0 }]} placeholder="Precio editable" />}
           </View>)}
@@ -121,7 +122,8 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
         return (
           <View key={invoice.id} style={cardStyle}>
             <Text style={{ fontWeight: '800' }}>{house?.address ?? 'Casa'}</Text>
-            <Text style={{ color: '#475569', marginTop: 2 }}>{invoice.number ?? invoice.id.slice(0, 8)} · {invoice.createdAt}</Text>
+            {house && onHistory && <Pressable onPress={() => onHistory(house.id)} style={{ paddingVertical: 8 }}><Text style={{ color: '#2563eb', fontWeight: '800' }}>Historial / Generar Invoice</Text></Pressable>}
+            <Text style={{ color: '#475569', marginTop: 2 }}>{invoice.number ?? invoice.id.slice(0, 8)} · {invoiceDate(invoice.createdAt)}</Text>
             <Text style={{ marginTop: 6, fontSize: 16, fontWeight: '700' }}>${invoice.total.toFixed(2)} · <Text style={{ color: invoice.paid ? '#15803d' : '#b91c1c' }}>{invoice.paid ? 'Pagado' : 'No pagado'}</Text></Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <RoundButton color="#38bdf8" icon="eye-outline" onPress={() => { setOpenId(invoice.id); setError(''); setPayDate(texasDate()); }} />
@@ -153,7 +155,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
                 const total = open.items?.find((item) => item.orderId === id)?.total ?? order?.price ?? 0;
                 return (
                   <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#e2e8f0' }}>
-                    <Text style={{ flex: 1 }}>{order?.date ?? ''} · {order?.service ?? 'Servicio'}</Text>
+                    <Text style={{ flex: 1 }}>{invoiceDate(order?.date ?? '')} · {order?.service ?? 'Servicio'}</Text>
                     <Text style={{ fontWeight: '700' }}>${total.toFixed(2)}</Text>
                   </View>
                 );
@@ -188,4 +190,5 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     </View>
   );
 }
+
 
