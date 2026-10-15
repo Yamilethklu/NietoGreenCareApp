@@ -39,7 +39,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
   useEffect(() => { if (page > pages - 1) setPage(0); }, [pages, page]);
   const start = page * PAGE_SIZE;
   const shown = mine.slice(start, start + PAGE_SIZE);
-  const eligible = (order: Order) => order.status !== 'CANCELADA' && !order.paid && !order.invoiceId && order.price > 0;
+  const eligible = (order: Order) => order.status === 'FINALIZADA' && !order.paid && !order.invoiceId && order.price > 0;
   const total = mine.filter((order) => selected.includes(order.id)).reduce((sum, order) => sum + order.price, 0);
   const houseInvoices = invoices.filter((invoice) => invoice.houseId === house.id);
 
