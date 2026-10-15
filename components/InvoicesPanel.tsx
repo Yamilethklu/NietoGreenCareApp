@@ -15,6 +15,15 @@ function RoundButton({ color, icon, onPress }: { color: string; icon: keyof type
   return <Pressable onPress={onPress} style={{ backgroundColor: color, width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18} color="#fff" /></Pressable>;
 }
 
+function HistoryButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={{ backgroundColor: '#22c55e', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginVertical: 8 }}>
+      <Ionicons name="albums-outline" size={16} color="#fff" />
+      <Text style={{ color: '#fff', fontWeight: '700' }}>Ver historial / Generar invoice</Text>
+    </Pressable>
+  );
+}
+
 export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas', onHistory }: {
   invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string; onHistory?: (houseId: string) => void;
 }) {
@@ -94,7 +103,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
         <Text style={{ fontWeight: '800', color: '#14532d', fontSize: 16 }}>Crear invoice por cliente</Text>
         <TextInput value={search} onChangeText={value => { setSearch(value); setSelectedHouse(null); setSelectedOrders([]); setPrices({}); }} placeholder="Buscar por nombre del cliente" style={input} />
         {matchingHouses.map(house => <Pressable key={house.id} onPress={() => { setSelectedHouse(house.id); setSelectedOrders([]); setPrices({}); }} style={{ padding: 10, backgroundColor: selectedHouse === house.id ? '#bbf7d0' : '#f1f5f9', marginBottom: 5, borderRadius: 7 }}><Text style={{ fontWeight: '700' }}>{house.client}</Text><Text>{house.address}</Text></Pressable>)}
-        {selectedHouse && onHistory && <Pressable onPress={() => onHistory(selectedHouse)} style={{ paddingVertical: 10 }}><Text style={{ color: '#2563eb', fontWeight: '800' }}>Abrir historial / Generar Invoice</Text></Pressable>}
+        {selectedHouse && onHistory && <HistoryButton onPress={() => onHistory(selectedHouse)} />}
         {selectedHouse && <>
           <Text style={{ fontWeight: '800', marginTop: 8 }}>Historial de órdenes de trabajo</Text>
           {history.map(order => <View key={order.id} style={{ borderBottomWidth: 1, borderColor: '#e2e8f0', paddingVertical: 9 }}>
@@ -122,7 +131,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
         return (
           <View key={invoice.id} style={cardStyle}>
             <Text style={{ fontWeight: '800' }}>{house?.address ?? 'Casa'}</Text>
-            {house && onHistory && <Pressable onPress={() => onHistory(house.id)} style={{ paddingVertical: 8 }}><Text style={{ color: '#2563eb', fontWeight: '800' }}>Historial / Generar Invoice</Text></Pressable>}
+            {house && onHistory && <HistoryButton onPress={() => onHistory(house.id)} />}
             <Text style={{ color: '#475569', marginTop: 2 }}>{invoice.number ?? invoice.id.slice(0, 8)} · {invoiceDate(invoice.createdAt)}</Text>
             <Text style={{ marginTop: 6, fontSize: 16, fontWeight: '700' }}>${invoice.total.toFixed(2)} · <Text style={{ color: invoice.paid ? '#15803d' : '#b91c1c' }}>{invoice.paid ? 'Pagado' : 'No pagado'}</Text></Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -190,5 +199,6 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     </View>
   );
 }
+
 
 
