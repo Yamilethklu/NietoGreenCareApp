@@ -70,19 +70,20 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
 
   function remove(invoice: Invoice) {
     const sent = Boolean(invoice.sentAt);
-    Alert.alert(
-      'Eliminar factura',
-      sent ? 'Esta factura ya fue enviada al cliente. Solo se puede eliminar si sigue sin pagar. Sus órdenes quedarán libres para otra factura. ¿Eliminarla?' : 'Sus órdenes quedarán libres para generar otra factura. ¿Eliminarla?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar', style: 'destructive', onPress: () => void (async () => {
-          try {
-            await adminRequest('operations/invoices', 'POST', { action: 'delete', invoice_id: invoice.id, confirm_sent_unpaid: sent });
-            await reload(); setMessage('Factura eliminada.');
-          } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'No se pudo eliminar la factura.'); }
-        })() },
-      ],
-    );
+    const message = invoice.paid
+      ? 'Esta factura ya está pagada. Si la eliminas, los pagos de sus visitas se quitarán y las visitas quedarán libres para agregarlas a otra factura. ¿Seguro que quieres eliminarla?'
+      : sent
+        ? 'Esta factura ya fue enviada al cliente. Sus visitas quedarán libres para otra factura. ¿Seguro que quieres eliminarla?'
+        : 'Sus visitas quedarán libres para generar otra factura. ¿Seguro que quieres eliminarla?';
+    Alert.alert('Eliminar factura', message, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: () => void (async () => {
+        try {
+          await adminRequest('operations/invoices', 'POST', { action: 'delete', invoice_id: invoice.id, confirm_sent_unpaid: sent, release_payments: invoice.paid });
+          await reload(); setMessage('Factura eliminada.');
+        } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'No se pudo eliminar la factura.'); }
+      })() },
+    ]);
   }
 
   async function pay() {
@@ -199,6 +200,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     </View>
   );
 }
+
 
 
 

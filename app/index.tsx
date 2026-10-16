@@ -264,12 +264,13 @@ export default function HomeScreen() {
   };
 
   const deleteHouse = async (houseId: string) => {
-    try { await adminRequest('operations', 'POST', { action: 'house_delete', id: houseId }); setDetailHouseId(null); await loadData(); setMessage('Casa eliminada.'); }
+    try { await adminRequest('operations', 'POST', { action: 'house_delete', id: houseId, force: true }); setDetailHouseId(null); await loadData(); setMessage('Casa eliminada.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo eliminar la casa.'); }
   };
-  const confirmDeleteHouse = (house: House) => Alert.alert('Eliminar casa', `¿Eliminar ${house.address}? Solo se puede si no tiene visitas terminadas, pagos ni facturas; de lo contrario, desactívala.`, [
+  const confirmDeleteHouse = (house: House) => Alert.alert('Eliminar casa', `¿Seguro que quieres eliminar ${house.address}? Se borrarán también sus visitas, facturas y pagos, y no se puede deshacer. Si solo quieres dejar de atenderla y conservar el historial, desactívala.`, [
     { text: 'Cancelar', style: 'cancel' },
-    { text: 'Eliminar', style: 'destructive', onPress: () => void deleteHouse(house.id) },
+    ...(house.active && house.planId ? [{ text: 'Desactivar', onPress: () => void toggleHouseActive(house) }] : []),
+    { text: 'Eliminar', style: 'destructive' as const, onPress: () => void deleteHouse(house.id) },
   ]);
   const toggleHouseActive = async (house: House) => {
     if (!house.planId) { setMessage('Esta casa no tiene un plan de visitas que activar o desactivar.'); return; }
@@ -746,5 +747,6 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#16a34a', borderRadius: 8, alignItems: 'center', paddingVertical: 13, marginTop: 8 },
   primaryText: { color: '#ffffff', fontWeight: '900' },
 });
+
 
 
