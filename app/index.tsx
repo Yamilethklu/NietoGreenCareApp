@@ -27,7 +27,7 @@ const today = texasDate();
 
 type LeadStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled';
 type Tab = 'dashboard' | 'solicitudes' | 'clientes' | 'agenda' | 'casas' | 'invoices' | 'trabajadores' | 'precios' | 'galeria' | 'opiniones' | 'qr' | 'editor';
-type Lead = { id: string; customer: string; phone: string; email: string; address: string; reference: string; services: string; areaSqFt: number; details: string; gateCode?: string; status: LeadStatus; finalPrice: number; requestedDate: string; cadence: RequestCadence; city: string; zipCode: string };
+type Lead = { id: string; customer: string; phone: string; email: string; address: string; reference: string; services: string; areaSqFt: number; details: string; gateCode?: string; status: LeadStatus; finalPrice: number; requestedDate: string; cadence: RequestCadence; city: string; zipCode: string; source: string };
 type Price = { id: string; name: string; minArea: number; maxArea: number; price: number };
 type Gallery = { id: string; title: string; type: 'foto' | 'video'; visible: boolean };
 type Review = { id: string; customer: string; rating: number; text: string; visible: boolean };
@@ -341,7 +341,7 @@ export default function HomeScreen() {
     const planByLead = new Map<string, any>();
     for(const plan of planRows.data??[]){const prior=planByLead.get(String(plan.lead_id));if(!prior||(!prior.active&&plan.active))planByLead.set(String(plan.lead_id),plan);}
     const invoiceByOrder = new Map((invoiceRows.data ?? []).map((row: any) => [String(row.order_id), row]));
-    setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: cleanService(Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Yard'), areaSqFt: Number(row.area_sq_ft ?? 0), details: [row.details, row.additional_notes].filter((value, index, values) => value && values.indexOf(value) === index).join('\n'), gateCode: row.gate_code ?? undefined, status: mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0), requestedDate: String(row.requested_date ?? texasDate()).slice(0, 10), cadence: requestCadence(row.quote_options ?? {}, row.details ?? ''), city: row.city ?? '', zipCode: row.zip_code ?? '' })));
+    setLeads(leadData.map((row: any) => ({ id: row.id, customer: row.customer_name ?? 'Cliente', phone: row.customer_phone ?? '', email: row.customer_email ?? '', address: row.address ?? '', reference: row.reference_code ?? String(row.id).slice(0, 8), services: cleanService(Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Yard'), areaSqFt: Number(row.area_sq_ft ?? 0), details: [row.details, row.additional_notes].filter((value, index, values) => value && values.indexOf(value) === index).join('\n'), gateCode: row.gate_code ?? undefined, source: row.source ?? 'website', status: row.status === 'pending' && (row.source === 'mobile_app' || row.source === 'admin') ? 'scheduled' : mapLeadStatus(row.status), finalPrice: Number(row.final_price ?? 0), requestedDate: String(row.requested_date ?? texasDate()).slice(0, 10), cadence: requestCadence(row.quote_options ?? {}, row.details ?? ''), city: row.city ?? '', zipCode: row.zip_code ?? '' })));
     const acceptedIds = new Set(leadData.filter((row: any) => row.status !== 'pending' || row.source === 'mobile_app' || row.source === 'admin').map((row: any) => row.id));
     setHouses(leadData.filter((row: any) => acceptedIds.has(row.id)).map((row: any) => { const plan = planByLead.get(String(row.id)); return { id: row.id, planId: plan?.id, client: row.customer_name ?? 'Cliente', address: row.address ?? '', city: row.city ?? '', zipCode: row.zip_code ?? '', phone: row.customer_phone ?? '', email: row.customer_email ?? '', frequency: mapCadence(plan?.cadence), service: Array.isArray(row.selected_services) ? row.selected_services.join(', ') : 'Corte de yarda', price: Number(plan?.price_per_visit ?? row.final_price ?? 0), active: Boolean(plan?.active ?? row.status !== 'cancelled'), notes: plan ? (plan.notes ?? '') : (row.additional_notes ?? ''), state: row.state ?? '', planStart: plan?.first_date ?? undefined, duration: plan?.duration_minutes ? Number(plan.duration_minutes) : undefined }; }));
     if (priceRows.data) setPrices(priceRows.data.map((row: any) => ({ id: row.id, name: row.name ?? 'Regla de precio', minArea: Number(row.min_sq_ft ?? 0), maxArea: Number(row.max_sq_ft ?? 0), price: Number(row.price ?? 0) })));
@@ -423,7 +423,12 @@ export default function HomeScreen() {
     } else if (match) {
       await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: match.id, service_date: value.date, price: value.price, notes });
     } else {
-      await adminRequest('operations', 'POST', { action: 'mobile_house', id: null, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
+      const created = await adminRequest('operations', 'POST', { action: 'mobile_house', id: null, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
+      // Igual que al aceptar una solicitud del cotizador: queda programada con su fecha.
+      if (created?.id) {
+        const { error: statusError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date }).eq('id', created.id);
+        if (statusError) throw statusError;
+      }
     }
     setAcceptingLead(null); setNewRequestOpen(false); await loadData();
     setMessage('Solicitud guardada con su fecha, frecuencia y nota.');
@@ -540,6 +545,8 @@ export default function HomeScreen() {
         {tab === 'dashboard' && <><SectionTitle title="Dashboard" action="Sincronizar" onPress={() => void loadData()} /><View style={styles.metricsGrid}><Metric label="Ingresos" value={`$${metrics.income.toFixed(2)}`} /><Metric label="Trabajos hechos" value={String(metrics.completed)} /><Metric label="Solicitudes" value={String(metrics.pending)} /><Metric label="Area medida" value={`${metrics.area.toLocaleString()} ft²`} /></View><Text style={styles.notes}>Cada semana se guarda automaticamente un resumen para revisarlo despues.</Text>{weeklySummaries.slice(0, 6).map((summary) => <Card key={summary.weekStart} title={`Semana ${summary.weekStart} a ${summary.weekEnd}`} meta={`${summary.completed} finalizadas - ${summary.cancelled} canceladas`} status={`$${summary.total.toFixed(2)}`} tone="green"><Text style={styles.notes}>{summary.notes}</Text></Card>)}</>}
         {tab === 'solicitudes' && <>
           {leads.filter(lead => lead.status === 'pending').map(lead => <View key={lead.id} style={styles.card}><Text style={styles.cardTitle}>{lead.customer}</Text><Text style={styles.cardMeta}>{lead.address}</Text><Text style={styles.cardMeta}>{lead.services}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)} · {lead.cadence === 'bi_weekly' ? 'Cada 15 días' : lead.cadence === 'weekly' ? 'Cada 8 días' : 'Una vez'}</Text><Text style={styles.cardMeta}>Fecha: {lead.requestedDate}</Text><Text style={styles.cardMeta}>{lead.phone} · {lead.email}</Text><Text style={styles.notes}>{lead.details}{lead.gateCode ? `\nCódigo: ${lead.gateCode}` : ''}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}><Pressable onPress={() => void updateLeadStatus(lead.id, 'cancelled')} style={{ flex: 1, padding: 12, backgroundColor: '#dc2626', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Rechazar</Text></Pressable><Pressable onPress={() => acceptLead(lead)} style={{ flex: 1, padding: 12, backgroundColor: '#16a34a', borderRadius: 8 }}><Text style={{ textAlign: 'center', color: '#fff', fontWeight: '800' }}>Aceptar</Text></Pressable></View></View>)}
+          <Text style={styles.sectionTitle}>Aceptadas y anteriores</Text>
+          {leads.filter(lead => lead.status !== 'pending').sort((a, b) => b.requestedDate.localeCompare(a.requestedDate)).slice(0, 40).map(lead => <View key={lead.id} style={styles.card}><Text style={styles.cardTitle}>{lead.customer}</Text><Text style={styles.cardMeta}>{leadLabel(lead.status)} · {lead.source === 'website' ? 'Cotizador' : 'Manual'}</Text><Text style={styles.cardMeta}>{lead.address}{lead.city ? `, ${lead.city}` : ''}</Text><Text style={styles.cardMeta}>{lead.services}</Text><Text style={styles.total}>${lead.finalPrice.toFixed(2)} · {lead.cadence === 'bi_weekly' ? 'Cada 15 días' : lead.cadence === 'weekly' ? 'Cada 8 días' : 'Una vez'}</Text><Text style={styles.cardMeta}>Fecha: {lead.requestedDate}</Text><Text style={styles.cardMeta}>{lead.phone}{lead.email ? ` · ${lead.email}` : ''}</Text>{lead.details ? <Text style={styles.notes}>{lead.details}</Text> : null}</View>)}
         </>}
         {tab === 'agenda' && <>
           <SectionTitle title="Agenda del día" action="Hoy" onPress={() => setSelectedDate(texasDate())} />
@@ -747,6 +754,7 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#16a34a', borderRadius: 8, alignItems: 'center', paddingVertical: 13, marginTop: 8 },
   primaryText: { color: '#ffffff', fontWeight: '900' },
 });
+
 
 
 
