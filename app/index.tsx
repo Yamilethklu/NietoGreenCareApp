@@ -411,19 +411,19 @@ export default function HomeScreen() {
       const reusable = (plans ?? []).find(plan => plan.cadence === value.cadence && plan.first_date === value.date);
       for (const plan of plans ?? []) if (plan.id !== reusable?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: plan.id, changes: { active: false } });
       if (reusable) {
-        await adminRequest('operations', 'POST', { action: 'mobile_house', id, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: lead?.city || match?.city || '', zip_code: lead?.zipCode || match?.zipCode || '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
+        await adminRequest('operations', 'POST', { action: 'mobile_house', id, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
         const visits = await supabase!.from('work_orders').select('id').eq('plan_id', reusable.id);
         if (visits.error) throw visits.error;
         for (const visit of visits.data ?? []) {
           if (!(await updateOrder(visit.id, { notes }))) throw new Error('No se pudo guardar la nota.');
         }
       } else await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: id, crew_member_id: null, cadence: value.cadence, first_date: value.date, preferred_start: '08:00', duration_minutes: 60, price_per_visit: value.price, notes } });
-      const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, final_price: value.price }).eq('id', id).select('id').single();
+      const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip, final_price: value.price }).eq('id', id).select('id').single();
       if (saveError) throw saveError;
     } else if (match) {
       await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: match.id, service_date: value.date, price: value.price, notes });
     } else {
-      await adminRequest('operations', 'POST', { action: 'mobile_house', id: null, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: '', zip_code: '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
+      await adminRequest('operations', 'POST', { action: 'mobile_house', id: null, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
     }
     setAcceptingLead(null); setNewRequestOpen(false); await loadData();
     setMessage('Solicitud guardada con su fecha, frecuencia y nota.');
@@ -582,7 +582,7 @@ export default function HomeScreen() {
       </ScrollView>
       <HouseModal house={editingHouse} onClose={() => setEditingHouse(null)} onSave={saveHouse} />
       <DayCalendar visible={calendarOpen} selected={calendarFor === 'filter' ? (requestsFilter ?? selectedDate) : selectedDate} onSelect={(date) => (calendarFor === 'filter' ? setRequestsFilter(date) : setSelectedDate(date))} onClose={() => setCalendarOpen(false)} />
-      <NewRequestModal visible={newRequestOpen} initialValue={acceptingLead ? (() => { const lead = leads.find(item => item.id === acceptingLead); return lead ? { name: lead.customer, address: lead.address, phone: lead.phone, email: lead.email, services: cleanService(lead.services || 'Yard'), date: lead.requestedDate, cadence: lead.cadence, note: '', price: lead.finalPrice || 0 } : undefined; })() : undefined} onClose={() => { setNewRequestOpen(false); setAcceptingLead(null); }} onSave={createRequest} />
+      <NewRequestModal visible={newRequestOpen} initialValue={acceptingLead ? (() => { const lead = leads.find(item => item.id === acceptingLead); return lead ? { name: lead.customer, address: lead.address, city: lead.city, zip: lead.zipCode, phone: lead.phone, email: lead.email, services: cleanService(lead.services || 'Yard'), date: lead.requestedDate, cadence: lead.cadence, note: '', price: lead.finalPrice || 0 } : undefined; })() : undefined} onClose={() => { setNewRequestOpen(false); setAcceptingLead(null); }} onSave={createRequest} />
       <OrderEditModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={saveOrderEdit} />
       <PaymentModal visible={!!paymentTarget} date={paymentDate} onDate={setPaymentDate} method={paymentMethod} note={paymentNote} onMethod={setPaymentMethod} onNote={setPaymentNote} onClose={() => setPaymentTarget(null)} onSave={registerPayment} />
       <PromptModal
@@ -747,6 +747,7 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#16a34a', borderRadius: 8, alignItems: 'center', paddingVertical: 13, marginTop: 8 },
   primaryText: { color: '#ffffff', fontWeight: '900' },
 });
+
 
 
 
