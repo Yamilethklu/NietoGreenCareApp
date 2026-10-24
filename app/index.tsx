@@ -405,21 +405,34 @@ export default function HomeScreen() {
     const notes = value.note.trim();
     if (lead || (match && value.cadence !== 'one_time')) {
       const id = lead?.id ?? match!.id;
-      // Replace the pending quote's automatic plan only when the owner saves the accepted dates.
+      // Obtener planes activos para este cliente.
       const { data: plans, error } = await supabase!.from('service_plans').select('id,cadence,first_date').eq('lead_id', id).eq('active', true);
       if (error) throw error;
-      const reusable = (plans ?? []).find(plan => plan.cadence === value.cadence && plan.first_date === value.date);
-      for (const plan of plans ?? []) if (plan.id !== reusable?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: plan.id, changes: { active: false } });
-      if (reusable) {
-        await adminRequest('operations', 'POST', { action: 'mobile_house', id, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
-        const visits = await supabase!.from('work_orders').select('id').eq('plan_id', reusable.id);
-        if (visits.error) throw visits.error;
-        for (const visit of visits.data ?? []) {
-          if (!(await updateOrder(visit.id, { notes }))) throw new Error('No se pudo guardar la nota.');
-        }
-      } else await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: id, crew_member_id: null, cadence: value.cadence, first_date: value.date, preferred_start: '08:00', duration_minutes: 60, price_per_visit: value.price, notes } });
-      const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip, final_price: value.price }).eq('id', id).select('id').single();
-      if (saveError) throw saveError;
+      const activePlans = plans ?? [];
+      // Si ya tiene visitas futuras con la misma cadencia, agregar solo una orden adicional
+      // para evitar que el servidor rechace el cambio de frecuencia.
+      const hasActivePlan = activePlans.length > 0;
+      const sameFrequency = activePlans.some(plan => plan.cadence === value.cadence);
+      if (hasActivePlan && !sameFrequency) {
+        // Frecuencia diferente: agregar la visita como orden extra sin tocar el plan existente.
+        await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: id, service_date: value.date, price: value.price, notes });
+        const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '', final_price: value.price }).eq('id', id).select('id').single();
+        if (saveError) throw saveError;
+      } else {
+        // Misma frecuencia o cliente nuevo: actualizar o crear plan normalmente.
+        const reusable = activePlans.find(plan => plan.cadence === value.cadence && plan.first_date === value.date);
+        for (const plan of activePlans) if (plan.id !== reusable?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: plan.id, changes: { active: false } });
+        if (reusable) {
+          await adminRequest('operations', 'POST', { action: 'mobile_house', id, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
+          const visits = await supabase!.from('work_orders').select('id').eq('plan_id', reusable.id);
+          if (visits.error) throw visits.error;
+          for (const visit of visits.data ?? []) {
+            if (!(await updateOrder(visit.id, { notes }))) throw new Error('No se pudo guardar la nota.');
+          }
+        } else await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: id, crew_member_id: null, cadence: value.cadence, first_date: value.date, preferred_start: '08:00', duration_minutes: 60, price_per_visit: value.price, notes } });
+        const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip, final_price: value.price }).eq('id', id).select('id').single();
+        if (saveError) throw saveError;
+      }
     } else if (match) {
       await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: match.id, service_date: value.date, price: value.price, notes });
     } else {
