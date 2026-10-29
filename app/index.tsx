@@ -398,53 +398,48 @@ export default function HomeScreen() {
     await loadData(); setMessage('Nota guardada en las fechas del servicio.');
   }
   async function createRequest(value: NewRequest) {
+    // Un registro por propiedad: el nombre por sí solo nunca identifica una casa.
+    const normalizeAddress = (text: string) => normalizeName(text).replace(/[^a-z0-9]/g, '');
+    const existingHouse = houses.find(house =>
+      normalizeName(house.client) === normalizeName(value.name) &&
+      normalizeAddress(house.address) === normalizeAddress(value.address) &&
+      String(house.zipCode ?? '').trim() === value.zip.trim() &&
+      normalizeName(house.city ?? '') === normalizeName(value.city)
+    );
     const lead = leads.find(item => item.id === acceptingLead);
-    const key = normalizeName(value.name);
-    const matches = houses.filter(house => normalizeName(house.client) === key);
-    const match = matches.find(house => normalizeName(house.address) === normalizeName(value.address)) ?? matches[0];
-    const notes = value.note.trim();
-    if (lead || (match && value.cadence !== 'one_time')) {
-      const id = lead?.id ?? match!.id;
-      // Obtener planes activos para este cliente.
-      const { data: plans, error } = await supabase!.from('service_plans').select('id,cadence,first_date').eq('lead_id', id).eq('active', true);
-      if (error) throw error;
-      const activePlans = plans ?? [];
-      // Si ya tiene visitas futuras con la misma cadencia, agregar solo una orden adicional
-      // para evitar que el servidor rechace el cambio de frecuencia.
-      const hasActivePlan = activePlans.length > 0;
-      const sameFrequency = activePlans.some(plan => plan.cadence === value.cadence);
-      if (hasActivePlan && !sameFrequency) {
-        // Frecuencia diferente: agregar la visita como orden extra sin tocar el plan existente.
-        await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: id, service_date: value.date, price: value.price, notes });
-        const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '', final_price: value.price }).eq('id', id).select('id').single();
-        if (saveError) throw saveError;
-      } else {
-        // Misma frecuencia o cliente nuevo: actualizar o crear plan normalmente.
-        const reusable = activePlans.find(plan => plan.cadence === value.cadence && plan.first_date === value.date);
-        for (const plan of activePlans) if (plan.id !== reusable?.id) await adminRequest('operations', 'POST', { action: 'plan_update', id: plan.id, changes: { active: false } });
-        if (reusable) {
-          await adminRequest('operations', 'POST', { action: 'mobile_house', id, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city || lead?.city || match?.city || '', zip_code: value.zip || lead?.zipCode || match?.zipCode || '' }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
-          const visits = await supabase!.from('work_orders').select('id').eq('plan_id', reusable.id);
-          if (visits.error) throw visits.error;
-          for (const visit of visits.data ?? []) {
-            if (!(await updateOrder(visit.id, { notes }))) throw new Error('No se pudo guardar la nota.');
-          }
-        } else await adminRequest('operations', 'POST', { action: 'plan', plan: { lead_id: id, crew_member_id: null, cadence: value.cadence, first_date: value.date, preferred_start: '08:00', duration_minutes: 60, price_per_visit: value.price, notes } });
-        const { error: saveError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date, additional_notes: notes, customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip, final_price: value.price }).eq('id', id).select('id').single();
-        if (saveError) throw saveError;
+    const notes = [value.services.trim(), value.note.trim()].filter(Boolean).join('\n');
+    const id = lead?.id ?? existingHouse?.id;
+
+    if (id) {
+      // Servicio único adicional, sin alterar datos de la propiedad ni planes recurrentes.
+      await adminRequest('operations', 'POST', {
+        action: 'extra_order', lead_id: id, service_date: value.date,
+        price: value.price, notes,
+      });
+      if (lead) {
+        const { error } = await supabase!.from('leads').update({ status: 'scheduled' }).eq('id', id);
+        if (error) throw error;
       }
-    } else if (match) {
-      await adminRequest('operations', 'POST', { action: 'extra_order', lead_id: match.id, service_date: value.date, price: value.price, notes });
     } else {
-      const created = await adminRequest('operations', 'POST', { action: 'mobile_house', id: null, house: { customer_name: value.name, customer_phone: value.phone, customer_email: value.email || null, address: value.address, city: value.city, zip_code: value.zip }, cadence: value.cadence, first_date: value.date, price: value.price, notes });
-      // Igual que al aceptar una solicitud del cotizador: queda programada con su fecha.
+      // Distinta dirección/ZIP: crear propiedad independiente, aunque el nombre coincida.
+      const created = await adminRequest('operations', 'POST', {
+        action: 'mobile_house', id: null,
+        house: {
+          customer_name: value.name, customer_phone: value.phone,
+          customer_email: value.email || null, address: value.address,
+          city: value.city, zip_code: value.zip,
+        },
+        cadence: 'one_time', first_date: value.date, price: value.price, notes,
+      });
       if (created?.id) {
-        const { error: statusError } = await supabase!.from('leads').update({ status: 'scheduled', requested_date: value.date }).eq('id', created.id);
-        if (statusError) throw statusError;
+        const { error } = await supabase!.from('leads')
+          .update({ status: 'scheduled', requested_date: value.date })
+          .eq('id', created.id);
+        if (error) throw error;
       }
     }
     setAcceptingLead(null); setNewRequestOpen(false); await loadData();
-    setMessage('Solicitud guardada con su fecha, frecuencia y nota.');
+    setMessage('Servicio único guardado para la propiedad correspondiente.');
   }
   async function updateLeadStatus(id: string, status: LeadStatus) { if (!supabase) return; const { error } = await supabase.from('leads').update({ status }).eq('id', id); if (error) { setMessage(error.message); return; } await loadData(); }
   function acceptLead(lead: Lead) { setAcceptingLead(lead.id); setNewRequestOpen(true); }
