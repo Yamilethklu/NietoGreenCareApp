@@ -15,6 +15,13 @@
       "ios": {
         "simulator": false
       }
+    },
+    "owner-private": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "channel": "production"
     }
   },
   "submit": {
