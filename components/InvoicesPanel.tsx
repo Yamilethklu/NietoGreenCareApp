@@ -182,7 +182,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
       {!filtered.length && !((filter === 'todos' || filter === 'no_pagado') && unbilled.length) ? <Text style={{ marginTop: 16, color: '#64748b' }}>No hay facturas con este filtro.</Text> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
-        <Text style={{ color: '#334155', fontWeight: '700' }}>{filtered.length ? `${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} de ${filtered.length}` : '0 de 0'}</Text>
+        <Text style={{ color: '#334155', fontWeight: '700' }}>{filtered.length ? `${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} de ${filtered.length} facturas` : ((filter === 'todos' || filter === 'no_pagado') && unbilled.length ? `${unbilled.length} trabajo(s) pendiente(s) sin factura` : '0 de 0')}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable disabled={page === 0} onPress={() => setPage(page - 1)} style={{ padding: 10, opacity: page === 0 ? 0.3 : 1 }}><Ionicons name="chevron-back" size={22} color="#14532d" /></Pressable>
           <Pressable disabled={page >= pages - 1} onPress={() => setPage(page + 1)} style={{ padding: 10, opacity: page >= pages - 1 ? 0.3 : 1 }}><Ionicons name="chevron-forward" size={22} color="#14532d" /></Pressable>
