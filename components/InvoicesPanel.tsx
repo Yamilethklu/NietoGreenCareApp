@@ -44,6 +44,26 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     () => invoices.filter((item) => filter === 'todos' || (filter === 'pagado' ? item.paid : !item.paid)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [invoices, filter],
   );
+  // Mostrar trabajos terminados pendientes aunque aún no exista un invoice.
+  // No se inventa una factura: se permite generar la real desde el servidor.
+  const unbilled = useMemo(() => orders.filter(order =>
+    order.status === 'FINALIZADA' && !order.invoiceId &&
+    Number(order.price) > 0 && Number(order.paidAmount) < Number(order.price)
+  ).sort((a, b) => b.date.localeCompare(a.date)), [orders]);
+  const [generatingOrder, setGeneratingOrder] = useState<string | null>(null);
+  async function invoiceForOrder(order: Order) {
+    if (generatingOrder) return;
+    setGeneratingOrder(order.id);
+    try {
+      await adminRequest('operations/invoices', 'POST', {
+        action: 'create_group', items: [{ orderId: order.id, price: order.price }],
+      });
+      await reload();
+      setMessage('Factura creada; ya aparece en No pagado.');
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'No se pudo generar la factura.');
+    } finally { setGeneratingOrder(null); }
+  }
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   useEffect(() => { if (page > pages - 1) setPage(0); }, [pages, page]);
   const start = page * PAGE_SIZE;
@@ -127,6 +147,22 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
         ))}
       </View>
 
+      {(filter === 'todos' || filter === 'no_pagado') && unbilled.length > 0 && (
+        <View style={cardStyle}>
+          <Text style={{ fontWeight: '800', color: '#14532d', fontSize: 16 }}>Trabajos finalizados pendientes de cobro</Text>
+          <Text style={{ color: '#64748b', marginTop: 4 }}>Aún sin invoice. Genera la factura para cobrarla y conservarla en el historial.</Text>
+          {unbilled.map(order => {
+            const house = houses.find(item => item.id === order.houseId);
+            return <View key={order.id} style={{ borderBottomWidth: 1, borderColor: '#e2e8f0', paddingVertical: 10 }}>
+              <Text style={{ fontWeight: '700' }}>{house?.client ?? 'Cliente'} · {house?.address ?? 'Casa'}</Text>
+              <Text>{invoiceDate(order.date)} · Saldo pendiente: ${Math.max(0, order.price - order.paidAmount).toFixed(2)}</Text>
+              <Pressable disabled={generatingOrder !== null} onPress={() => void invoiceForOrder(order)} style={{ backgroundColor: '#15803d', padding: 10, borderRadius: 8, marginTop: 6, opacity: generatingOrder ? 0.6 : 1 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{generatingOrder === order.id ? 'Generando...' : 'Generar invoice pendiente'}</Text>
+              </Pressable>
+            </View>;
+          })}
+        </View>
+      )}
       {shown.map((invoice) => {
         const house = houseOf(invoice);
         return (
@@ -143,7 +179,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
           </View>
         );
       })}
-      {!filtered.length ? <Text style={{ marginTop: 16, color: '#64748b' }}>No hay facturas con este filtro.</Text> : null}
+      {!filtered.length && !((filter === 'todos' || filter === 'no_pagado') && unbilled.length) ? <Text style={{ marginTop: 16, color: '#64748b' }}>No hay facturas con este filtro.</Text> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
         <Text style={{ color: '#334155', fontWeight: '700' }}>{filtered.length ? `${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} de ${filtered.length}` : '0 de 0'}</Text>
