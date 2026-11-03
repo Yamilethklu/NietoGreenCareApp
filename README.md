@@ -67,3 +67,7 @@ npx expo start
 **Actualizaciones por la nube:** el workflow de iOS publica cambios JS/recursos compatibles con runtime `1.1.9` a `production` y `preview`. OTA no instala por primera vez la app en un nuevo dispositivo y no reemplaza builds nativos ni firma Apple. Confirmar éxito en Actions antes de anunciar una actualización.
 
 **Privacidad:** no compartir el enlace de instalación con terceros; solo los dispositivos autorizados pueden instalar una versión Ad Hoc. No subir archivos IPA, credenciales, perfiles de firma ni claves privadas al repositorio público.
+
+### Compilación privada iOS desde GitHub Actions
+
+[Ejecutar el workflow de compilación privada](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/ios-private-build.yml) desde **Run workflow** después de registrar el nuevo iPhone y preparar los perfiles de firma en EAS/Apple. El workflow ejecuta `npm ci`, `npm run typecheck` y `eas build --platform ios --profile owner-private --non-interactive --wait`. Requiere `EXPO_TOKEN`, variables públicas Supabase y credenciales de firma ya configuradas en EAS. **No se ejecuta automáticamente**: el cambio de dispositivo requiere autorización y registro previos. El enlace de instalación real aparece en EAS únicamente después de un build exitoso.
