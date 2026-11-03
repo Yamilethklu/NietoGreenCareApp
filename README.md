@@ -56,7 +56,7 @@ npx expo start
 
 **Portal permanente de referencia:** este README es la entrada estable para obtener la versión autorizada. Un enlace al repositorio **no es** por sí mismo un instalador `.ipa`.
 
-- [Consultar compilaciones en Expo](https://expo.dev/accounts/klunder123/projects/nieto-green-care/builds) (requiere acceso a la cuenta/proyecto; verificar nombre del proyecto).
+- [Consultar compilaciones en Expo](https://expo.dev/) (requiere acceso a la cuenta/proyecto; verificar nombre del proyecto).
 - [Acciones de publicación OTA iOS](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/eas-update.yml).
 - [Repositorio Android y sus instrucciones de instalación](https://github.com/Yamilethklu/Nietogreecareandroid).
 
