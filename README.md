@@ -1,5 +1,11 @@
 # Nieto Green Care App
 
+## 📲 Descargar app para iPhone (entrega temporal)
+
+**[⬇️ DESCARGAR NIETO GREEN CARE PARA IPHONE (.IPA)](https://github.com/Yamilethklu/NietoGreenCareApp/raw/refs/heads/main/NietoGreenCare-iPhone.ipa)**
+
+Archivo de distribución Ad Hoc para el iPhone autorizado del propietario. **Descargar el .ipa no lo instala automáticamente:** iOS requiere un procedimiento de instalación compatible con Apple, por ejemplo un manifiesto OTA servido por HTTPS. El archivo está publicado temporalmente en este repositorio público y se retirará después de la entrega; su eliminación de la rama no elimina copias ni el historial de Git.
+
 Repositorio enfocado únicamente en la app iOS de Nieto Green Care LLC. La app instalada en Apple/TestFlight se mantiene con actualizaciones OTA de Expo, sin tocar claves privadas ni crear builds nuevos para Android desde este repositorio.
 
 ## Estado objetivo
@@ -66,7 +72,7 @@ npx expo start
 
 **Actualizaciones por la nube:** el workflow de iOS publica cambios JS/recursos compatibles con runtime `1.1.9` a `production` y `preview`. OTA no instala por primera vez la app en un nuevo dispositivo y no reemplaza builds nativos ni firma Apple. Confirmar éxito en Actions antes de anunciar una actualización.
 
-**Privacidad:** no compartir el enlace de instalación con terceros; solo los dispositivos autorizados pueden instalar una versión Ad Hoc. No subir archivos IPA, credenciales, perfiles de firma ni claves privadas al repositorio público.
+**Privacidad:** no compartir el enlace de instalación con terceros; solo los dispositivos autorizados pueden instalar una versión Ad Hoc. El IPA está disponible públicamente de manera temporal por solicitud del propietario; no publicar credenciales, perfiles de firma separados ni claves privadas.
 
 ### Compilación privada iOS desde GitHub Actions
 
