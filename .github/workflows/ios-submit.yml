@@ -1,25 +1,27 @@
-name: Submit Nieto Green Care to TestFlight
+name: Submit App Store build to Apple (Custom App)
+
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ios-submit.yml']
   workflow_dispatch:
     inputs:
       build_id:
-        description: EAS iPhone production build ID
+        description: ID of a completed iOS production EAS build
         required: true
-        default: 9ccc7dd0-9131-4fd7-a78e-4a144ce0556f
+        type: string
 permissions:
   contents: read
 jobs:
   submit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      BUILD_ID: ${{ inputs.build_id || '9ccc7dd0-9131-4fd7-a78e-4a144ce0556f' }}
+      BUILD_ID: ${{ inputs.build_id }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify parameters
+        run: |
+          test -n "$EXPO_TOKEN" || { echo "::error::Missing EXPO_TOKEN"; exit 1; }
+          test -n "$BUILD_ID" || { echo "::error::Provide EAS production build ID"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -28,5 +30,5 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-      - name: Submit existing build without creating another build
+      - name: Submit existing production build for App Store Connect processing
         run: eas submit --platform ios --profile production --id "$BUILD_ID" --non-interactive --no-wait
