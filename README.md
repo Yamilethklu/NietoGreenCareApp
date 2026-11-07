@@ -1,79 +1,52 @@
-# Nieto Green Care App
+# Nieto Green Care — distribución privada mediante Apple Business Manager
 
-## 📲 Descargar app para iPhone (entrega temporal)
+Aplicación iOS de Nieto Green Care LLC. **La distribución oficial es una app personalizada (Custom App) de App Store Connect**, disponible exclusivamente para las organizaciones autorizadas en Apple Business Manager. No es una publicación pública ni un instalador directo desde GitHub.
 
-**[⬇️ DESCARGAR NIETO GREEN CARE PARA IPHONE (.IPA)](https://github.com/Yamilethklu/NietoGreenCareApp/raw/refs/heads/main/NietoGreenCare-iPhone.ipa)**
+## Identificadores
+- Bundle ID: `com.nietogreencare.app`
+- Versión de referencia: `1.1.9 (14)`; runtime Expo OTA: `1.1.9`
+- App Store Connect App ID: `6818833389`
+- Organización indicada en App Store Connect: `klunderstudio`, ID `357027122695` (comprobar coincidencia con Apple Business Manager)
 
-Archivo de distribución Ad Hoc para el iPhone autorizado del propietario. **Descargar el .ipa no lo instala automáticamente:** iOS requiere un procedimiento de instalación compatible con Apple, por ejemplo un manifiesto OTA servido por HTTPS. El archivo está publicado temporalmente en este repositorio público y se retirará después de la entrega; su eliminación de la rama no elimina copias ni el historial de Git.
+## Compilar y enviar (firma App Store, NO distribución interna)
+La configuración `eas.json` usa `build.production.distribution: "store"` y `submit.production.ios.ascAppId`.
 
-Repositorio enfocado únicamente en la app iOS de Nieto Green Care LLC. La app instalada en Apple/TestFlight se mantiene con actualizaciones OTA de Expo, sin tocar claves privadas ni crear builds nuevos para Android desde este repositorio.
+1. Verificar que en **App Store Connect → Precio y disponibilidad** esté marcada **Privada**, con la organización correcta. Apple Business Manager requiere la organización destinataria y sus mecanismos de adquisición/asignación de licencias.
+2. Comprobar que las credenciales de firma y las variables públicas necesarias de Supabase estén configuradas en Expo/EAS. Nunca agregar secretos privados al repositorio.
+3. En una terminal con acceso a Expo y Apple:
+   ```bash
+   npm ci
+   npm run typecheck
+   npx eas-cli@latest login
+   npx eas-cli@latest build --platform ios --profile production
+   npx eas-cli@latest submit --platform ios --profile production --latest
+   ```
+   Opcionalmente ejecutar desde GitHub Actions el workflow **iPhone App Store build (private Custom App)**, después de comprobar credenciales y valores necesarios. Para enviar una compilación ya existente, usar el workflow de envío indicando su ID.
+4. En App Store Connect, esperar el procesamiento, asociar el build a la versión, completar las capturas, privacidad, clasificación, datos de revisión y cuenta/instrucciones de acceso para el revisor; después enviar a revisión.
+5. Tras la aprobación, iniciar sesión en **Apple Business Manager** con la organización autorizada, buscar la aplicación personalizada, adquirir las licencias y asignarlas con los procedimientos de Apple (normalmente mediante una solución de administración de dispositivos).
 
-## Estado objetivo
+**Importante:** una compilación subida a App Store Connect no equivale a una publicación aprobada. La app solo estará disponible después de la revisión y habilitación correspondiente. La instalación, la actualización y la disponibilidad dependen de Apple Business Manager, licencias y configuración de dispositivos; no se garantiza duración indefinida.
 
-- Plataforma activa de este repositorio: iOS.
-- Bundle ID: `com.nietogreencare.app`.
-- Versión instalada de referencia: `1.1.9 (14)`.
-- Runtime OTA activo: `1.1.9`.
-- Canales OTA publicados: `production` y `preview`.
+## Funciones preservadas
+- Autenticación con Google y acceso al panel administrativo.
+- Agenda, calendario, clientes y trabajos.
+- Cotizador y solicitudes desde Supabase.
+- Historial, invoices y pagos.
+- Trabajadores, rutas y notificaciones.
 
-## Funciones principales
+## Actualizaciones OTA
+El workflow `.github/workflows/eas-update.yml` publica actualizaciones compatibles en los canales Expo ya configurados; no reemplaza la firma ni la entrega inicial de iOS y no autoriza cambios nativos sin una compilación nueva.
 
-- Inicio con Google y acceso al panel dentro de la app.
-- Agenda del día con trabajos programados.
-- Calendario para filtrar trabajos por fecha.
-- Solicitudes del cotizador sincronizadas desde Supabase.
-- Historial por cliente/casa.
-- Invoices y registro de pagos.
-- Trabajadores y asignación de rutas.
-- Notificaciones mediante Expo/Supabase cuando la configuración externa está activa.
-
-## Configuración pública requerida
-
-La app usa únicamente variables públicas de Supabase:
-
-```bash
+## Variables públicas
+```text
 EXPO_PUBLIC_SUPABASE_URL=
 EXPO_PUBLIC_SUPABASE_ANON_KEY=
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
+No publicar nunca claves `service_role`, credenciales de Apple ni tokens Expo.
 
-No se deben guardar claves privadas, service role keys ni secretos en este repositorio.
-
-## Actualización OTA para iOS
-
-Cada cambio en `main` que toque código de la app dispara el workflow `.github/workflows/eas-update.yml` y publica la actualización para iOS en:
-
-```text
-production
-preview
-```
-
-El runtime se mantiene en `1.1.9` para que coincida con la app Apple ya instalada.
-
-## Desarrollo
-
-```bash
-npm ci
-npm run typecheck
-npx expo start
-```
-
-## Instalación privada del propietario (iPhone)
-
-**Portal permanente de referencia:** este README es la entrada estable para obtener la versión autorizada. Un enlace al repositorio **no es** por sí mismo un instalador `.ipa`.
-
-- [Consultar compilaciones en Expo](https://expo.dev/) (requiere acceso a la cuenta/proyecto; verificar nombre del proyecto).
-- [Acciones de publicación OTA iOS](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/eas-update.yml).
-- [Repositorio Android y sus instrucciones de instalación](https://github.com/Yamilethklu/Nietogreecareandroid).
-
-**Cambio de iPhone:** registrar el UDID del nuevo dispositivo con `eas device:create` (requiere acceso Expo/Apple) y ejecutar `eas build --platform ios --profile owner-private` de manera interactiva para incluir el nuevo dispositivo en el perfil Ad Hoc; como alternativa, volver a firmar un IPA compatible mediante `eas build:resign`. Solo compartir el enlace real de la compilación cuando EAS confirme que está terminada. Un IPA Ad Hoc anterior no se instala en un iPhone nuevo que no figure en su perfil.
-
-**Caducidad:** TestFlight tiene vencimiento de builds; Ad Hoc evita depender de TestFlight pero requiere renovar certificados/perfiles y, cuando corresponda, reinstalar una versión firmada. No se puede garantizar una app Ad Hoc que nunca caduque. El enlace de este README puede mantenerse estable y apuntar a nuevas compilaciones verificadas.
-
-**Actualizaciones por la nube:** el workflow de iOS publica cambios JS/recursos compatibles con runtime `1.1.9` a `production` y `preview`. OTA no instala por primera vez la app en un nuevo dispositivo y no reemplaza builds nativos ni firma Apple. Confirmar éxito en Actions antes de anunciar una actualización.
-
-**Privacidad:** no compartir el enlace de instalación con terceros; solo los dispositivos autorizados pueden instalar una versión Ad Hoc. El IPA está disponible públicamente de manera temporal por solicitud del propietario; no publicar credenciales, perfiles de firma separados ni claves privadas.
-
-### Compilación privada iOS desde GitHub Actions
-
-[Ejecutar el workflow de compilación privada](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/ios-private-build.yml) desde **Run workflow** después de registrar el nuevo iPhone y preparar los perfiles de firma en EAS/Apple. El workflow ejecuta `npm ci`, `npm run typecheck` y `eas build --platform ios --profile owner-private --non-interactive --wait`. Requiere `EXPO_TOKEN`, variables públicas Supabase y credenciales de firma ya configuradas en EAS. **No se ejecuta automáticamente**: el cambio de dispositivo requiere autorización y registro previos. El enlace de instalación real aparece en EAS únicamente después de un build exitoso.
+## Enlaces
+- [Apple Business Manager](https://business.apple.com/)
+- [App Store Connect](https://appstoreconnect.apple.com/)
+- [Compilaciones en GitHub Actions](https://github.com/Yamilethklu/NietoGreenCareApp/actions/workflows/ios-build.yml)
+- [Repositorio Android independiente](https://github.com/Yamilethklu/Nietogreecareandroid)
