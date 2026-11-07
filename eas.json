@@ -4,24 +4,11 @@
     "appVersionSource": "local"
   },
   "build": {
-    "preview": {
-      "distribution": "internal",
-      "ios": {
-        "simulator": false
-      }
-    },
     "production": {
       "distribution": "store",
       "ios": {
         "simulator": false
       }
-    },
-    "owner-private": {
-      "distribution": "internal",
-      "ios": {
-        "simulator": false
-      },
-      "channel": "production"
     }
   },
   "submit": {
