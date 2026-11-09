@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminRequest, shareInvoice } from '../services/admin';
@@ -24,8 +24,21 @@ function HistoryButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas', onHistory }: {
-  invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string; onHistory?: (houseId: string) => void;
+function InvoiceCard({ address, details, amount, paid, children }: {
+  address: string; details: string; amount: number; paid: boolean; children: ReactNode;
+}) {
+  return (
+    <View style={cardStyle}>
+      <Text style={{ fontWeight: '800' }}>{address}</Text>
+      <Text style={{ color: '#475569', marginTop: 2 }}>{details}</Text>
+      <Text style={{ marginTop: 6, fontSize: 16, fontWeight: '700' }}>${amount.toFixed(2)} · <Text style={{ color: paid ? '#15803d' : '#b91c1c' }}>{paid ? 'Pagado' : 'No pagado'}</Text></Text>
+      {children}
+    </View>
+  );
+}
+
+export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas', onHistory, initialOpenId = null }: {
+  invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string; initialOpenId?: string | null; onHistory?: (houseId: string) => void;
 }) {
   const [search, setSearch] = useState('');
   const [selectedHouse, setSelectedHouse] = useState<string | null>(null);
@@ -34,7 +47,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<Filter>('todos');
   const [page, setPage] = useState(0);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [method, setMethod] = useState<PayMethod>('Cash');
   const [payDate, setPayDate] = useState(texasDate());
   const [error, setError] = useState('');
@@ -148,35 +161,31 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
       </View>
 
       {(filter === 'todos' || filter === 'no_pagado') && unbilled.length > 0 && (
-        <View style={cardStyle}>
+        <View style={{ marginTop: 10 }}>
           <Text style={{ fontWeight: '800', color: '#14532d', fontSize: 16 }}>Trabajos finalizados pendientes de cobro</Text>
           <Text style={{ color: '#64748b', marginTop: 4 }}>Aún sin invoice. Genera la factura para cobrarla y conservarla en el historial.</Text>
           {unbilled.map(order => {
             const house = houses.find(item => item.id === order.houseId);
-            return <View key={order.id} style={{ borderBottomWidth: 1, borderColor: '#e2e8f0', paddingVertical: 10 }}>
-              <Text style={{ fontWeight: '700' }}>{house?.client ?? 'Cliente'} · {house?.address ?? 'Casa'}</Text>
-              <Text>{invoiceDate(order.date)} · Saldo pendiente: ${Math.max(0, order.price - order.paidAmount).toFixed(2)}</Text>
+            return <InvoiceCard key={order.id} address={house?.address ?? 'Casa'} details={`${house?.client ?? 'Cliente'} · ${invoiceDate(order.date)} · Sin invoice`} amount={Math.max(0, order.price - order.paidAmount)} paid={false}>
+              {house && onHistory && <HistoryButton onPress={() => onHistory(house.id)} />}
               <Pressable disabled={generatingOrder !== null} onPress={() => void invoiceForOrder(order)} style={{ backgroundColor: '#15803d', padding: 10, borderRadius: 8, marginTop: 6, opacity: generatingOrder ? 0.6 : 1 }}>
                 <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{generatingOrder === order.id ? 'Generando...' : 'Generar invoice pendiente'}</Text>
               </Pressable>
-            </View>;
+            </InvoiceCard>;
           })}
         </View>
       )}
       {shown.map((invoice) => {
         const house = houseOf(invoice);
         return (
-          <View key={invoice.id} style={cardStyle}>
-            <Text style={{ fontWeight: '800' }}>{house?.address ?? 'Casa'}</Text>
+          <InvoiceCard key={invoice.id} address={house?.address ?? 'Casa'} details={`${invoice.number ?? invoice.id.slice(0, 8)} · ${invoiceDate(invoice.createdAt)}`} amount={invoice.total} paid={invoice.paid}>
             {house && onHistory && <HistoryButton onPress={() => onHistory(house.id)} />}
-            <Text style={{ color: '#475569', marginTop: 2 }}>{invoice.number ?? invoice.id.slice(0, 8)} · {invoiceDate(invoice.createdAt)}</Text>
-            <Text style={{ marginTop: 6, fontSize: 16, fontWeight: '700' }}>${invoice.total.toFixed(2)} · <Text style={{ color: invoice.paid ? '#15803d' : '#b91c1c' }}>{invoice.paid ? 'Pagado' : 'No pagado'}</Text></Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <RoundButton color="#38bdf8" icon="eye-outline" onPress={() => { setOpenId(invoice.id); setError(''); setPayDate(texasDate()); }} />
-              <RoundButton color="#eab308" icon="download-outline" onPress={() => void shareInvoice(invoice.id).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No se pudo abrir el PDF.'))} />
+              <RoundButton color="#eab308" icon="download-outline" onPress={() => void shareInvoice(invoice.id, invoice.number).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No se pudo abrir el PDF.'))} />
               <RoundButton color="#ef4444" icon="trash-outline" onPress={() => remove(invoice)} />
             </View>
-          </View>
+          </InvoiceCard>
         );
       })}
       {!filtered.length && !((filter === 'todos' || filter === 'no_pagado') && unbilled.length) ? <Text style={{ marginTop: 16, color: '#64748b' }}>No hay facturas con este filtro.</Text> : null}
@@ -208,7 +217,7 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
               })}
               <Text style={{ marginTop: 10, fontSize: 18, fontWeight: '800' }}>Total ${open.total.toFixed(2)} · {open.paid ? 'Pagado' : 'No pagado'}</Text>
 
-              <Pressable onPress={() => void shareInvoice(open.id).catch(cause => setError(cause instanceof Error ? cause.message : 'No se pudo descargar el PDF.'))} style={{ backgroundColor: '#2563eb', padding: 13, borderRadius: 8, marginTop: 12 }}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>Descargar PDF</Text></Pressable>
+              <Pressable onPress={() => void shareInvoice(open.id, open.number).catch(cause => setError(cause instanceof Error ? cause.message : 'No se pudo descargar el PDF.'))} style={{ backgroundColor: '#2563eb', padding: 13, borderRadius: 8, marginTop: 12 }}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '800' }}>Descargar PDF</Text></Pressable>
               {open.paid ? null : (
                 <View style={{ marginTop: 18 }}>
                   <Text style={{ fontWeight: '800', color: '#b45309' }}>Registrar pago</Text>
@@ -236,7 +245,3 @@ export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, ti
     </View>
   );
 }
-
-
-
-

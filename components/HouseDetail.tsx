@@ -26,6 +26,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [showInvoices, setShowInvoices] = useState(false);
+  const [invoiceToOpen, setInvoiceToOpen] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [service, setService] = useState('');
   const [date, setDate] = useState(texasDate());
@@ -98,7 +99,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
         <Square color="#22c55e" icon="create-outline" label="Editar casa" onPress={() => onEditHouse(house)} />
         <Square color="#f59e0b" icon="add" label="Nueva orden" onPress={() => { setShowNew(!showNew); setShowInvoices(false); }} />
-        <Square color="#38bdf8" icon="albums-outline" label="Invoices" onPress={() => { setShowInvoices(!showInvoices); setShowNew(false); }} />
+        <Square color="#38bdf8" icon="albums-outline" label="Invoices" onPress={() => { setInvoiceToOpen(null); setShowInvoices(!showInvoices); setShowNew(false); }} />
       </View>
 
       {showNew ? (
@@ -121,7 +122,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
 
       {showInvoices ? (
         <View style={{ marginTop: 14 }}>
-          <InvoicesPanel title="Invoices de esta casa" invoices={houseInvoices} houses={houses} orders={orders} reload={reload} setMessage={setMessage} />
+          <InvoicesPanel initialOpenId={invoiceToOpen} title="Invoices de esta casa" invoices={houseInvoices} houses={houses} orders={orders} reload={reload} setMessage={setMessage} />
         </View>
       ) : (
         <View style={{ marginTop: 16 }}>
@@ -134,6 +135,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
           <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>Selecciona las órdenes que se deben. Las pagadas, canceladas o ya facturadas no se pueden seleccionar.</Text>
 
           {shown.map((order) => {
+            const pendingInvoice = order.invoiceId && houseInvoices.find(invoice => !invoice.paid && (invoice.id === order.invoiceId || invoice.orderIds.includes(order.id)));
             const can = eligible(order);
             const on = selected.includes(order.id);
             const bg = order.status === 'FINALIZADA' ? '#dcfce7' : order.status === 'CANCELADA' ? '#e5e7eb' : '#fff';
@@ -147,6 +149,11 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
                     {order.notes ? <Text style={{ color: '#475569', marginTop: 2 }}>{order.notes}</Text> : null}
                   </View>
                 </Pressable>
+                {pendingInvoice ? (
+                  <View style={{ alignSelf: 'flex-start', marginTop: 10 }}>
+                    <Square color="#15803d" icon="eye-outline" label="Ver invoice pendiente" onPress={() => { setInvoiceToOpen(pendingInvoice.id); setShowNew(false); setShowInvoices(true); }} />
+                  </View>
+                ) : null}
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                   <Square color="#eab308" icon="create-outline" onPress={() => onEditOrder(order)} />
                   <Square color="#ef4444" icon="trash-outline" onPress={() => confirmDelete(order)} />
@@ -168,5 +175,3 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
     </View>
   );
 }
-
-

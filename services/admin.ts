@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { supabase } from './auth';
 
@@ -12,13 +12,16 @@ export async function adminRequest(path: string, method = 'GET', body?: unknown)
   return result.data;
 }
 
-export async function shareInvoice(id: string) {
+export async function shareInvoice(id: string, invoiceNumber?: string) {
   const session = (await supabase?.auth.getSession())?.data.session;
   if (!session) throw new Error('Inicia sesión nuevamente.');
   if (!(await Sharing.isAvailableAsync())) throw new Error('Este dispositivo no permite compartir archivos.');
-  const target = new File(Paths.cache, `factura-${id.replace(/[^a-z0-9-]/gi, '')}-${Date.now()}.pdf`);
+  const folio = invoiceNumber?.replace(/[^a-z0-9_-]/gi, '-').slice(0, 80) || id.replace(/[^a-z0-9-]/gi, '').slice(0, 8);
+  const directory = new Directory(Paths.cache, `invoice-share-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  directory.create();
+  const target = new File(directory, `Invoice-${folio}.pdf`);
   try {
     const file = await File.downloadFileAsync(`${siteUrl}/api/admin/operations/invoice-file?id=${encodeURIComponent(id)}`, target, { headers: { Authorization: `Bearer ${session.access_token}` } });
-    await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Factura del cliente' });
-  } finally { if (target.exists) target.delete(); }
+    await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Invoice' });
+  } finally { if (directory.exists) directory.delete(); }
 }
