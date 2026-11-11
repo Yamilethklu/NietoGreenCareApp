@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { adminRequest, shareInvoice } from '../services/admin';
+import { usePanelApi } from '../services/panel-api';
 import { texasDate } from '../services/daily-agenda';
 import { DateField } from './DateField';
 import { invoiceDate, compareHistoryDates, PAGE_SIZE, PAY_METHODS, dbPay, isDate, normalizeName, type House, type Invoice, type Order, type PayMethod } from '../src/panel';
@@ -40,6 +40,7 @@ function InvoiceCard({ address, details, amount, paid, children }: {
 export function InvoicesPanel({ invoices, houses, orders, reload, setMessage, title = 'Facturas', onHistory, initialOpenId = null }: {
   invoices: Invoice[]; houses: House[]; orders: Order[]; reload: () => Promise<void>; setMessage: (message: string) => void; title?: string; initialOpenId?: string | null; onHistory?: (houseId: string) => void;
 }) {
+  const { adminRequest, shareInvoice } = usePanelApi();
   const [search, setSearch] = useState('');
   const [selectedHouse, setSelectedHouse] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { adminRequest } from '../services/admin';
+import { usePanelApi } from '../services/panel-api';
 import { texasDate } from '../services/daily-agenda';
 import { InvoicesPanel } from './InvoicesPanel';
 import { DateField } from './DateField';
@@ -23,6 +23,7 @@ export function HouseDetail({ house, orders, invoices, houses, onBack, onEditHou
   house: House; orders: Order[]; invoices: Invoice[]; houses: House[]; onBack: () => void; onEditHouse: (house: House) => void;
   onEditOrder: (order: Order) => void; onDeleteOrder: (id: string) => void; reload: () => Promise<void>; setMessage: (message: string) => void;
 }) {
+  const { adminRequest } = usePanelApi();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [showInvoices, setShowInvoices] = useState(false);

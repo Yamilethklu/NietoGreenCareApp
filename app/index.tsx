@@ -1,3 +1,4 @@
+import { DemoPanel } from '../components/DemoPanel';
 import { useRealtimeTable } from '../src/hooks/useRealtime';
 import { PromptModal } from '../components/PromptModal';
 
@@ -36,6 +37,12 @@ type Role = 'admin' | 'worker' | null;
 type WeeklySummary = { id?: string; weekStart: string; weekEnd: string; completed: number; cancelled: number; unpaid: number; paid: number; total: number; notes: string };
 
 export default function HomeScreen() {
+  const [demo, setDemo] = useState(false);
+  // Unmount live subscriptions while demonstrating. No fabricated session or admin role.
+  return demo ? <DemoPanel onExit={() => setDemo(false)} HouseEditor={HouseModal} PaymentEditor={PaymentModal} /> : <AuthenticatedHome onDemo={() => setDemo(true)} />;
+}
+
+function AuthenticatedHome({ onDemo }: { onDemo: () => void }) {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
 
@@ -517,6 +524,7 @@ export default function HomeScreen() {
       <Text style={styles.sectionTitle}>Selecciona tu acceso</Text>
       <Pressable style={styles.primaryButton} onPress={() => setRole('worker')}><Text style={styles.primaryText}>Panel para trabajador</Text></Pressable>
       <Pressable style={styles.primaryButton} onPress={() => setRole('admin')}><Text style={styles.primaryText}>Panel administrador</Text></Pressable>
+      <Pressable style={styles.smallButton} onPress={onDemo}><Text style={styles.smallButtonText}>Probar demostración · sin cuenta</Text></Pressable>
       <Text style={styles.notes}>Ambos accesos usan la misma base de datos del sitio.</Text>
     </View></SafeAreaView>
   );
@@ -534,6 +542,7 @@ export default function HomeScreen() {
       <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" /><Text style={styles.sectionTitle}>{role === 'worker' ? 'Acceso trabajador' : 'Acceso administrador'}</Text>
       <Text style={styles.notes}>Usa la misma cuenta de Google del sitio o tu correo y contraseña. El correo debe estar autorizado para este panel.</Text>
       <Pressable style={styles.primaryButton} disabled={authBusy} onPress={() => void googleSignIn()}><Text style={styles.primaryText}>{authBusy ? 'Conectando...' : 'Continuar con Google'}</Text></Pressable>
+      <Pressable style={styles.smallButton} onPress={onDemo}><Text style={styles.smallButtonText}>Probar demostración · sin cuenta</Text></Pressable>
       <Field label="Correo" value={authEmail} onChangeText={setAuthEmail} />
       <Field label="Contraseña" value={authPassword} onChangeText={setAuthPassword} secureTextEntry />
       <Pressable style={styles.primaryButton} disabled={authBusy} onPress={() => void signIn()}><Text style={styles.primaryText}>Entrar y sincronizar</Text></Pressable>
